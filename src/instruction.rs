@@ -8,6 +8,7 @@ use bytes::BufMut;
 use solana_program::hash::Hash;
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::Pack;
+use solana_program::pubkey::PUBKEY_BYTES;
 use solana_program::{instruction::AccountMeta, instruction::Instruction, pubkey::Pubkey};
 
 use crate::model::address_book::{AddressBookEntry, AddressBookEntryNameHash, DAppBookEntry};
@@ -163,6 +164,14 @@ pub enum ProgramInstruction {
         account_guid_hash: BalanceAccountGuidHash,
         instructions: Vec<Instruction>,
         dapp: DAppBookEntry,
+    },
+
+    /// 0. `[writable]` The multisig operation account
+    /// 1. `[writable]` The multisig data account
+    /// 2. `[signer]` The initiator account
+    SupplyDAppTransactionInstructions {
+        instructions: Vec<Instruction>,
+        starting_index: u8,
     },
 
     /// 0. `[writable]` The multisig operation account
@@ -510,6 +519,18 @@ impl ProgramInstruction {
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(&update_bytes);
             }
+            &ProgramInstruction::SupplyDAppTransactionInstructions {
+                ref instructions,
+                starting_index,
+            } => {
+                let account_metas = unique_account_metas(instructions, &Vec::new());
+                pack_supply_dapp_transaction_instructions(
+                    starting_index,
+                    &account_metas,
+                    instructions,
+                    &mut buf,
+                );
+            }
         }
         buf
     }
@@ -543,6 +564,7 @@ impl ProgramInstruction {
             25 => Self::unpack_finalize_balance_account_name_update_instruction(rest)?,
             26 => Self::unpack_init_balance_account_policy_update_instruction(rest)?,
             27 => Self::unpack_finalize_balance_account_policy_update_instruction(rest)?,
+            28 => Self::unpack_supply_dapp_instructions_instruction(rest)?,
             _ => return Err(ProgramError::InvalidInstructionData),
         })
     }
@@ -869,6 +891,44 @@ impl ProgramInstruction {
             )?,
         })
     }
+
+    fn unpack_supply_dapp_instructions_instruction(
+        bytes: &[u8],
+    ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let starting_index = *read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        Ok(Self::SupplyDAppTransactionInstructions {
+            starting_index,
+            instructions: read_instructions(iter)?,
+        })
+    }
+}
+
+pub fn pack_supply_dapp_transaction_instructions(
+    starting_index: u8,
+    account_metas: &Vec<AccountMeta>,
+    instructions: &Vec<Instruction>,
+    buf: &mut Vec<u8>,
+) {
+    buf.push(28);
+    buf.push(starting_index);
+    buf.put_u8(account_metas.len().as_u8());
+    for account_meta in account_metas.iter() {
+        let mut account_meta_buf = vec![0; 1 + Signer::LEN];
+        account_meta_buf[0] = 0;
+        if account_meta.is_signer {
+            account_meta_buf[0] |= 2;
+        }
+        if account_meta.is_writable {
+            account_meta_buf[0] |= 1;
+        }
+        Signer::new(account_meta.pubkey).pack_into_slice(&mut account_meta_buf[1..1 + Signer::LEN]);
+        buf.extend_from_slice(account_meta_buf.as_slice());
+    }
+    buf.put_u16_le(instructions.len() as u16);
+    for instruction in instructions.iter() {
+        append_instruction(instruction, &account_metas, buf);
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1186,6 +1246,26 @@ fn read_instruction(
     let data = read_slice(iter, data_len.try_into().unwrap())
         .ok_or(ProgramError::InvalidInstructionData)?
         .to_vec();
+    Ok(Instruction {
+        program_id,
+        accounts,
+        data,
+    })
+}
+
+pub fn read_expanded_instruction(iter: &mut Iter<u8>) -> Result<Instruction, ProgramError> {
+    let pubkey_bytes = read_slice(iter, PUBKEY_BYTES).ok_or(ProgramError::InvalidAccountData)?;
+    let program_id = Pubkey::new(pubkey_bytes);
+    let account_meta_count = read_u16(iter).ok_or(ProgramError::InvalidInstructionData)?;
+    let accounts = (0..account_meta_count)
+        .map(|_| read_account_meta(iter).unwrap())
+        .collect();
+
+    let data_len = read_u16(iter).ok_or(ProgramError::InvalidInstructionData)?;
+    let data = read_slice(iter, data_len.try_into().unwrap())
+        .ok_or(ProgramError::InvalidInstructionData)?
+        .to_vec();
+
     Ok(Instruction {
         program_id,
         accounts,

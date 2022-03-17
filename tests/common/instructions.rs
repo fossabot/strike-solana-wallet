@@ -5,7 +5,9 @@ use solana_program::pubkey::Pubkey;
 use solana_program::{system_program, sysvar};
 use std::borrow::Borrow;
 use std::time::Duration;
-use strike_wallet::instruction::{BalanceAccountCreation, BalanceAccountPolicyUpdate};
+use strike_wallet::instruction::{
+    pack_supply_dapp_transaction_instructions, BalanceAccountCreation, BalanceAccountPolicyUpdate,
+};
 use strike_wallet::model::balance_account::BalanceAccount;
 use strike_wallet::{
     instruction::{
@@ -555,6 +557,35 @@ pub fn init_dapp_transaction(
         AccountMeta::new_readonly(*wallet_account, false),
         AccountMeta::new_readonly(*initiator_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
+    ];
+
+    Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    }
+}
+
+pub fn supply_dapp_transaction_instructions(
+    program_id: &Pubkey,
+    multisig_op_account: &Pubkey,
+    multisig_data_account: &Pubkey,
+    initiator_account: &Pubkey,
+    starting_index: u8,
+    account_metas: &Vec<AccountMeta>,
+    instructions: &Vec<Instruction>,
+) -> Instruction {
+    let mut data = Vec::<u8>::new();
+    pack_supply_dapp_transaction_instructions(
+        starting_index,
+        account_metas,
+        instructions,
+        &mut data,
+    );
+    let accounts = vec![
+        AccountMeta::new(*multisig_op_account, false),
+        AccountMeta::new(*multisig_data_account, false),
+        AccountMeta::new_readonly(*initiator_account, true),
     ];
 
     Instruction {

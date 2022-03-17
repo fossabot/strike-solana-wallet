@@ -185,6 +185,16 @@ impl Processor {
                 instructions,
             ),
 
+            ProgramInstruction::SupplyDAppTransactionInstructions {
+                instructions,
+                starting_index,
+            } => dapp_transaction_handler::supply_instructions(
+                program_id,
+                accounts,
+                starting_index,
+                instructions,
+            ),
+
             ProgramInstruction::FinalizeDAppTransaction {
                 ref account_guid_hash,
                 dapp,

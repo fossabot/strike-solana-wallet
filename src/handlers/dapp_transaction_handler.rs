@@ -86,6 +86,59 @@ pub fn init(
     Ok(())
 }
 
+pub fn supply_instructions(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    starting_index: u8,
+    instructions: Vec<Instruction>,
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
+    let multisig_data_account_info = next_program_account_info(accounts_iter, program_id)?;
+    let initiator_account_info = next_account_info(accounts_iter)?;
+
+    if !initiator_account_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // TODO - once we are storing the initiator in the multisig op (PRIME-3999), verify that the supplied one matches
+
+    let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
+
+    if multisig_op.params_hash.is_some() {
+        //return Err(WalletError::DAppTransactionAlreadyInitialized);
+    }
+
+    let mut multisig_data =
+        DAppMultisigData::unpack_unchecked(&multisig_data_account_info.data.borrow())?;
+
+    for index in starting_index..starting_index + instructions.len().as_u8() {
+        multisig_data.add_instruction(
+            index.as_u16(),
+            &instructions
+                .get(usize::from(index - starting_index))
+                .unwrap(),
+        )?;
+    }
+
+    if multisig_data.all_instructions_supplied() {
+        // compute hash and store in multisig op
+        let params_hash = multisig_data.hash()?;
+
+        // this is just temporary while the params hash is still being calculated by init
+        if params_hash != multisig_op.params_hash.unwrap() {
+            panic!("HASHES DO NOT MATCH!!!");
+        }
+        multisig_op.params_hash = Some(params_hash);
+    }
+    DAppMultisigData::pack(
+        multisig_data,
+        &mut multisig_data_account_info.data.borrow_mut(),
+    )?;
+    MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
+
+    Ok(())
+}
+
 fn account_balances(accounts: &[AccountInfo]) -> Vec<u64> {
     accounts.iter().map(|a| a.lamports()).collect()
 }

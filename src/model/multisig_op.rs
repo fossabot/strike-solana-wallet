@@ -15,7 +15,7 @@ use bytes::BufMut;
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::Clock;
 use solana_program::entrypoint::ProgramResult;
-use solana_program::hash::{hash, Hash};
+use solana_program::hash::{hash, Hash, HASH_BYTES};
 use solana_program::instruction::Instruction;
 use solana_program::msg;
 use solana_program::program_error::ProgramError;
@@ -206,11 +206,13 @@ pub struct MultisigOp {
     pub is_initialized: bool,
     pub disposition_records: Vec<ApprovalDispositionRecord>,
     pub dispositions_required: u8,
-    pub params_hash: Hash,
+    pub params_hash: Option<Hash>,
     pub started_at: i64,
     pub expires_at: i64,
     pub operation_disposition: OperationDisposition,
 }
+
+const EMPTY_PARAMS_HASH: [u8; HASH_BYTES] = [0; HASH_BYTES];
 
 impl MultisigOp {
     pub fn get_disposition_count(&self, disposition: ApprovalDisposition) -> u8 {
@@ -241,7 +243,7 @@ impl MultisigOp {
             })
             .collect::<Vec<_>>();
         self.dispositions_required = approvals_required;
-        self.params_hash = params.hash();
+        self.params_hash = Some(params.hash());
         self.is_initialized = true;
         self.started_at = started_at;
         self.expires_at = expires_at;
@@ -313,8 +315,15 @@ impl MultisigOp {
         expected_params: &MultisigOpParams,
         clock: &Clock,
     ) -> Result<bool, ProgramError> {
-        if expected_params.hash() != self.params_hash {
-            return Err(WalletError::InvalidSignature.into());
+        match self.params_hash {
+            Some(hash) => {
+                if expected_params.hash() != hash {
+                    return Err(WalletError::InvalidSignature.into());
+                }
+            }
+            None => {
+                return Err(WalletError::OperationNotInitialized.into());
+            }
         }
 
         if self.operation_disposition == OperationDisposition::NONE
@@ -394,7 +403,11 @@ impl Pack for MultisigOp {
 
         dispositions_required_dst[0] = *dispositions_required;
 
-        hash_dst.copy_from_slice(params_hash.to_bytes().as_ref());
+        if let Some(hash) = params_hash {
+            hash_dst.copy_from_slice(&hash.to_bytes())
+        } else {
+            hash_dst.copy_from_slice(&EMPTY_PARAMS_HASH)
+        }
 
         *started_at_dst = started_at.to_le_bytes();
         *expires_at_dst = expires_at.to_le_bytes();
@@ -444,7 +457,11 @@ impl Pack for MultisigOp {
             is_initialized,
             disposition_records,
             dispositions_required: dispositions_required[0],
-            params_hash: Hash::new_from_array(*params_hash),
+            params_hash: if *params_hash == EMPTY_PARAMS_HASH {
+                None
+            } else {
+                Some(Hash::new_from_array(*params_hash))
+            },
             started_at: i64::from_le_bytes(*started_at),
             expires_at: i64::from_le_bytes(*expires_at),
             operation_disposition: OperationDisposition::from_u8(operation_disposition[0]),

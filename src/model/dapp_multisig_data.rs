@@ -1,7 +1,15 @@
+use crate::error::WalletError;
+use crate::instruction::{append_instruction_expanded, read_expanded_instruction};
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
+use bitvec::macros::internal::funty::Fundamental;
+use bytes::BufMut;
+use itertools::all;
 use solana_program::entrypoint::ProgramResult;
+use solana_program::hash::{hash, Hash};
+use solana_program::instruction::Instruction;
+use solana_program::msg;
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::{IsInitialized, Pack, Sealed};
 use solana_program::pubkey::{Pubkey, PUBKEY_BYTES};
@@ -18,6 +26,7 @@ pub struct DAppMultisigData {
     pub num_instructions: u16,
     instruction_offsets: [u16; MAX_INSTRUCTION_COUNT],
     instruction_data: Vec<u8>,
+    position: usize,
 }
 
 impl DAppMultisigData {
@@ -33,13 +42,74 @@ impl DAppMultisigData {
         self.account_guid_hash = account_guid_hash;
         self.dapp = dapp;
         if num_instructions > MAX_INSTRUCTION_COUNT as u16 {
-            panic!("Too many instructions")
+            return Err(WalletError::DAppInstructionOverflow.into());
         }
         self.num_instructions = num_instructions;
         self.instruction_offsets = [0; MAX_INSTRUCTION_COUNT];
         self.instruction_data = vec![0; INSTRUCTION_DATA_LEN];
+        self.position = 0;
 
         Ok(())
+    }
+
+    pub fn add_instruction(&mut self, index: u16, instruction: &Instruction) -> ProgramResult {
+        if self.is_initialized {
+            if index >= self.num_instructions {
+                msg!("Index {:} too large (>= {:})", index, self.num_instructions);
+                return Err(WalletError::DAppInstructionOverflow.into());
+            }
+            if self.instruction_offsets[usize::from(index)] != 0 {
+                return Err(WalletError::DAppInstructionAlreadySupplied.into());
+            }
+            let mut buffer = Vec::<u8>::new();
+            append_instruction_expanded(instruction, &mut buffer);
+            // the offset is 1-based, so that an offset of 0 can mean "unset"
+            self.instruction_offsets[usize::from(index)] = (1 + self.position).as_u16();
+            let new_position = self.position + buffer.len();
+            if new_position >= INSTRUCTION_DATA_LEN {
+                msg!("Instruction data exceeded buffer size");
+                return Err(WalletError::DAppInstructionOverflow.into());
+            }
+            self.instruction_data[self.position..new_position].copy_from_slice(&buffer);
+            self.position = new_position;
+        }
+        Ok(())
+    }
+
+    pub fn all_instructions_supplied(&self) -> bool {
+        all(0..self.num_instructions, |x| {
+            self.instruction_offsets[usize::from(x)] != 0
+        })
+    }
+
+    pub fn hash(&self) -> Result<Hash, ProgramError> {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.push(7);
+        bytes.extend_from_slice(&self.wallet_address.to_bytes());
+        bytes.extend_from_slice(&self.account_guid_hash.to_bytes());
+        let mut buf = vec![0; DAppBookEntry::LEN];
+        self.dapp.pack_into_slice(buf.as_mut_slice());
+        bytes.extend_from_slice(&buf[..]);
+        let instructions = self.instructions()?;
+        bytes.put_u16_le(instructions.len().as_u16());
+        for instruction in instructions.into_iter() {
+            append_instruction_expanded(&instruction, &mut bytes);
+        }
+
+        Ok(hash(&bytes))
+    }
+
+    pub fn instructions(&self) -> Result<Vec<Instruction>, ProgramError> {
+        let read_nth_instruction = |index| -> Result<Instruction, ProgramError> {
+            let offset = usize::from(self.instruction_offsets.get(usize::from(index)).unwrap() - 1);
+            let bytes: Vec<u8> = self.instruction_data[offset..].to_vec();
+            read_expanded_instruction(&mut bytes.iter())
+        };
+
+        Ok((0..self.num_instructions)
+            .map(read_nth_instruction)
+            .filter_map(|f| f.ok())
+            .collect())
     }
 }
 
@@ -58,6 +128,7 @@ impl Pack for DAppMultisigData {
         + DAppBookEntry::LEN
         + 2
         + 2 * MAX_INSTRUCTION_COUNT
+        + 2
         + INSTRUCTION_DATA_LEN;
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
@@ -69,6 +140,7 @@ impl Pack for DAppMultisigData {
             dapp_dst,
             num_instructions_dst,
             instruction_offsets_dst,
+            position_dst,
             instruction_data_dst,
         ) = mut_array_refs![
             dst,
@@ -78,6 +150,7 @@ impl Pack for DAppMultisigData {
             DAppBookEntry::LEN,
             2,
             2 * MAX_INSTRUCTION_COUNT,
+            2,
             INSTRUCTION_DATA_LEN
         ];
 
@@ -88,6 +161,7 @@ impl Pack for DAppMultisigData {
             dapp,
             num_instructions,
             instruction_offsets,
+            position,
             instruction_data,
         } = self;
 
@@ -104,6 +178,7 @@ impl Pack for DAppMultisigData {
                 chunk.copy_from_slice(&instruction_offsets[i].to_le_bytes()[..2]);
             });
         instruction_data_dst.copy_from_slice(instruction_data);
+        position_dst.copy_from_slice(&position.as_u16().to_le_bytes()[..2]);
     }
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
@@ -115,6 +190,7 @@ impl Pack for DAppMultisigData {
             dapp,
             num_instructions,
             instruction_offsets,
+            position,
             instruction_data,
         ) = array_refs![
             src,
@@ -124,6 +200,7 @@ impl Pack for DAppMultisigData {
             DAppBookEntry::LEN,
             2,
             2 * MAX_INSTRUCTION_COUNT,
+            2,
             INSTRUCTION_DATA_LEN
         ];
 
@@ -156,6 +233,7 @@ impl Pack for DAppMultisigData {
             num_instructions,
             instruction_offsets: instruction_offsets_array,
             instruction_data: instruction_data[..].to_owned(),
+            position: usize::from(u16::from_le_bytes(*position)),
         })
     }
 }
@@ -190,6 +268,7 @@ mod test {
             },
             num_instructions: 0,
             instruction_offsets: [0; 32],
+            position: 0,
             instruction_data: vec![0; INSTRUCTION_DATA_LEN],
         };
         let mut buffer = vec![0; DAppMultisigData::LEN];
@@ -213,6 +292,7 @@ mod test {
                 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,
             ],
+            position: 23,
             instruction_data: vec![1; INSTRUCTION_DATA_LEN],
         };
         let mut buffer = vec![0; DAppMultisigData::LEN];
@@ -239,5 +319,6 @@ mod test {
         assert_eq!(data.num_instructions, data2.num_instructions);
         assert_eq!(data.instruction_offsets, data2.instruction_offsets);
         assert_eq!(data.instruction_data, data2.instruction_data);
+        assert_eq!(data.position, data2.position);
     }
 }

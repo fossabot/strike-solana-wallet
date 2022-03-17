@@ -480,7 +480,7 @@ pub async fn update_signer(
     );
 
     assert_eq!(
-        multisig_op.params_hash,
+        multisig_op.params_hash.unwrap(),
         MultisigOpParams::UpdateSigner {
             wallet_address: context.wallet_account.pubkey(),
             slot_update_type,
@@ -660,7 +660,7 @@ pub async fn account_settings_update(
     );
 
     assert_eq!(
-        multisig_op.params_hash,
+        multisig_op.params_hash.unwrap(),
         MultisigOpParams::UpdateBalanceAccountSettings {
             wallet_address: context.wallet_account.pubkey(),
             account_guid_hash: context.balance_account_guid_hash,
@@ -1196,7 +1196,7 @@ pub async fn setup_balance_account_tests(
     };
 
     assert_eq!(
-        multisig_op.params_hash,
+        multisig_op.params_hash.unwrap(),
         MultisigOpParams::CreateBalanceAccount {
             wallet_address: wallet_account.pubkey(),
             account_guid_hash: balance_account_guid_hash,
@@ -1229,7 +1229,7 @@ pub async fn setup_balance_account_tests(
         destination_name_hash: addr_book_entry.name_hash,
         allowed_destination: addr_book_entry,
         destination,
-        params_hash: multisig_op.params_hash,
+        params_hash: multisig_op.params_hash.unwrap(),
         allowed_dapp,
     }
 }
@@ -1245,7 +1245,7 @@ pub async fn get_operation_hash(banks_client: &mut BanksClient, op_address: Pubk
     )
     .unwrap();
 
-    multisig_op.params_hash
+    multisig_op.params_hash.unwrap()
 }
 
 pub async fn setup_create_balance_account_failure_tests(
@@ -2010,7 +2010,7 @@ pub fn assert_initialized_multisig_op(
         expected_dispositions.to_set()
     );
     assert_eq!(multisig_op.operation_disposition, expected_op_disposition);
-    assert_eq!(multisig_op.params_hash, expected_params.hash());
+    assert_eq!(multisig_op.params_hash.unwrap(), expected_params.hash());
 }
 
 pub fn assert_multisig_op_dispositions(
