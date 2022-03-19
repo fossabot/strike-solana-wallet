@@ -18,7 +18,7 @@ use strike_wallet::utils::{SlotId, Slots};
 #[tokio::test]
 async fn test_dapp_book_update() {
     let started_at = SystemTime::now();
-    let mut context = setup_test(30_000).await;
+    let mut context = setup_test(40_000).await;
 
     let wallet_account = Keypair::new();
     let assistant_account = Keypair::new();

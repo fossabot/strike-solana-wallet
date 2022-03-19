@@ -1,5 +1,5 @@
 use crate::error::WalletError;
-use crate::instruction::{append_instruction_expanded, read_expanded_instruction};
+use crate::instruction::{append_instruction, read_instruction};
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
@@ -62,7 +62,7 @@ impl DAppMultisigData {
                 return Err(WalletError::DAppInstructionAlreadySupplied.into());
             }
             let mut buffer = Vec::<u8>::new();
-            append_instruction_expanded(instruction, &mut buffer);
+            append_instruction(instruction, &mut buffer);
             // the offset is 1-based, so that an offset of 0 can mean "unset"
             self.instruction_offsets[usize::from(index)] = (1 + self.position).as_u16();
             let new_position = self.position + buffer.len();
@@ -93,7 +93,7 @@ impl DAppMultisigData {
         let instructions = self.instructions()?;
         bytes.put_u16_le(instructions.len().as_u16());
         for instruction in instructions.into_iter() {
-            append_instruction_expanded(&instruction, &mut bytes);
+            append_instruction(&instruction, &mut bytes);
         }
 
         Ok(hash(&bytes))
@@ -103,7 +103,7 @@ impl DAppMultisigData {
         let read_nth_instruction = |index| -> Result<Instruction, ProgramError> {
             let offset = usize::from(self.instruction_offsets.get(usize::from(index)).unwrap() - 1);
             let bytes: Vec<u8> = self.instruction_data[offset..].to_vec();
-            read_expanded_instruction(&mut bytes.iter())
+            read_instruction(&mut bytes.iter())
         };
 
         Ok((0..self.num_instructions)

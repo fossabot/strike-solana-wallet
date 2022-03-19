@@ -22,7 +22,7 @@ use strike_wallet::utils::SlotId;
 #[tokio::test]
 async fn wallet_config_policy_update() {
     let started_at = SystemTime::now();
-    let mut context = setup_test(30_000).await;
+    let mut context = setup_test(40_000).await;
 
     let wallet_account = Keypair::new();
     let assistant_account = Keypair::new();
@@ -174,7 +174,7 @@ async fn wallet_config_policy_update() {
 
 #[tokio::test]
 async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
-    let mut context = setup_test(30_000).await;
+    let mut context = setup_test(40_000).await;
 
     let wallet_account = Keypair::new();
     let assistant_account = Keypair::new();
@@ -309,7 +309,7 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
 
 #[tokio::test]
 async fn invalid_wallet_config_policy_updates() {
-    let mut context = setup_test(30_000).await;
+    let mut context = setup_test(40_000).await;
 
     let wallet_account = Keypair::new();
     let assistant_account = Keypair::new();

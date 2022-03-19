@@ -2,8 +2,8 @@
 
 use std::borrow::BorrowMut;
 
+use solana_program::instruction::Instruction;
 use solana_program::instruction::InstructionError::Custom;
-use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
 use solana_program::{system_instruction, system_program};
@@ -24,7 +24,6 @@ use strike_wallet::model::address_book::{DAppBookEntry, DAppBookEntryNameHash};
 use strike_wallet::model::balance_account::BalanceAccountGuidHash;
 use strike_wallet::model::dapp_multisig_data::DAppMultisigData;
 use strike_wallet::model::multisig_op::{ApprovalDisposition, BooleanSetting, MultisigOp};
-use strike_wallet::utils::unique_account_metas;
 
 use crate::common::utils;
 use crate::utils::BalanceAccountTestContext;
@@ -130,14 +129,12 @@ async fn setup_dapp_test() -> DAppTest {
         .unwrap();
 
     // supply the instructions
-    let inner_account_metas = unique_account_metas(&inner_instructions, &Vec::new());
     // send them in two separate transactions, with the second one sent first
     supply_instructions(
         &mut context,
         &multisig_op_account,
         &multisig_data_account,
         1,
-        &inner_account_metas,
         &vec![inner_instructions[1].clone()],
     )
     .await
@@ -147,7 +144,6 @@ async fn setup_dapp_test() -> DAppTest {
         &multisig_op_account,
         &multisig_data_account,
         0,
-        &inner_account_metas,
         &vec![inner_instructions[0].clone()],
     )
     .await
@@ -785,15 +781,12 @@ async fn test_supply_instruction_errors() {
         .unwrap();
 
     // test that you cannot supply an instruction outside of the range
-    let inner_account_metas = unique_account_metas(&inner_instructions, &Vec::new());
-
     assert_eq!(
         supply_instructions(
             &mut context,
             &multisig_op_account,
             &multisig_data_account,
             2,
-            &inner_account_metas,
             &vec![inner_instructions[1].clone()]
         )
         .await
@@ -808,7 +801,6 @@ async fn test_supply_instruction_errors() {
         &multisig_op_account,
         &multisig_data_account,
         0,
-        &inner_account_metas,
         &vec![inner_instructions[0].clone()],
     )
     .await
@@ -820,7 +812,6 @@ async fn test_supply_instruction_errors() {
             &multisig_op_account,
             &multisig_data_account,
             0,
-            &inner_account_metas,
             &vec![inner_instructions[1].clone()]
         )
         .await
@@ -838,7 +829,6 @@ async fn supply_instructions(
     multisig_op_account: &Keypair,
     multisig_data_account: &Keypair,
     starting_index: u8,
-    account_metas: &Vec<AccountMeta>,
     instructions: &Vec<Instruction>,
 ) -> transport::Result<()> {
     context
@@ -850,7 +840,6 @@ async fn supply_instructions(
                 &multisig_data_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 starting_index,
-                account_metas,
                 instructions,
             )],
             Some(&context.payer.pubkey()),

@@ -572,16 +572,10 @@ pub fn supply_dapp_transaction_instructions(
     multisig_data_account: &Pubkey,
     initiator_account: &Pubkey,
     starting_index: u8,
-    account_metas: &Vec<AccountMeta>,
     instructions: &Vec<Instruction>,
 ) -> Instruction {
     let mut data = Vec::<u8>::new();
-    pack_supply_dapp_transaction_instructions(
-        starting_index,
-        account_metas,
-        instructions,
-        &mut data,
-    );
+    pack_supply_dapp_transaction_instructions(starting_index, instructions, &mut data);
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*multisig_data_account, false),
