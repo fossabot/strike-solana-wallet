@@ -541,12 +541,12 @@ pub fn init_dapp_transaction(
     initiator_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
-    instructions: Vec<Instruction>,
+    instruction_count: u8,
 ) -> Instruction {
     let data = ProgramInstruction::InitDAppTransaction {
         account_guid_hash: *account_guid_hash,
         dapp,
-        instructions,
+        instruction_count,
     }
     .borrow()
     .pack();
@@ -597,13 +597,12 @@ pub fn finalize_dapp_transaction(
     balance_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
-    dapp: DAppBookEntry,
+    params_hash: &Hash,
     instructions: &Vec<Instruction>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeDAppTransaction {
         account_guid_hash: *account_guid_hash,
-        dapp,
-        instructions: instructions.clone(),
+        params_hash: *params_hash,
     }
     .borrow()
     .pack();

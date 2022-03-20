@@ -162,8 +162,8 @@ pub enum ProgramInstruction {
     /// 4. `[]` The sysvar clock account
     InitDAppTransaction {
         account_guid_hash: BalanceAccountGuidHash,
-        instructions: Vec<Instruction>,
         dapp: DAppBookEntry,
+        instruction_count: u8,
     },
 
     /// 0. `[writable]` The multisig operation account
@@ -182,8 +182,7 @@ pub enum ProgramInstruction {
     /// 5. `[]` The sysvar clock account
     FinalizeDAppTransaction {
         account_guid_hash: BalanceAccountGuidHash,
-        instructions: Vec<Instruction>,
-        dapp: DAppBookEntry,
+        params_hash: Hash,
     },
 
     /// 0  `[writable]` The multisig operation account
@@ -382,32 +381,22 @@ impl ProgramInstruction {
             &ProgramInstruction::InitDAppTransaction {
                 ref account_guid_hash,
                 ref dapp,
-                ref instructions,
+                instruction_count,
             } => {
                 buf.push(16);
                 buf.extend_from_slice(&account_guid_hash.to_bytes());
                 let mut buf2 = vec![0; DAppBookEntry::LEN];
                 dapp.pack_into_slice(buf2.as_mut_slice());
                 buf.extend_from_slice(&buf2[..]);
-                buf.put_u16_le(instructions.len() as u16);
-                for instruction in instructions.iter() {
-                    append_instruction(instruction, &mut buf);
-                }
+                buf.put_u8(instruction_count);
             }
             &ProgramInstruction::FinalizeDAppTransaction {
                 ref account_guid_hash,
-                ref dapp,
-                ref instructions,
+                ref params_hash,
             } => {
                 buf.push(17);
                 buf.extend_from_slice(&account_guid_hash.to_bytes());
-                let mut buf2 = vec![0; DAppBookEntry::LEN];
-                dapp.pack_into_slice(buf2.as_mut_slice());
-                buf.extend_from_slice(&buf2[..]);
-                buf.put_u16_le(instructions.len() as u16);
-                for instruction in instructions.iter() {
-                    append_instruction(instruction, &mut buf);
-                }
+                buf.extend_from_slice(&params_hash.to_bytes());
             }
             &ProgramInstruction::InitAccountSettingsUpdate {
                 ref account_guid_hash,
@@ -748,10 +737,11 @@ impl ProgramInstruction {
         let dapp = DAppBookEntry::unpack_from_slice(
             read_slice(iter, DAppBookEntry::LEN).ok_or(ProgramError::InvalidInstructionData)?,
         )?;
+        let instruction_count = read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
         Ok(Self::InitDAppTransaction {
             account_guid_hash,
             dapp,
-            instructions: read_instructions(iter)?,
+            instruction_count: *instruction_count,
         })
     }
 
@@ -762,13 +752,11 @@ impl ProgramInstruction {
         let account_guid_hash = unpack_account_guid_hash(
             read_slice(iter, 32).ok_or(ProgramError::InvalidInstructionData)?,
         )?;
-        let dapp = DAppBookEntry::unpack_from_slice(
-            read_slice(iter, DAppBookEntry::LEN).ok_or(ProgramError::InvalidInstructionData)?,
-        )?;
+        let params_hash =
+            Hash::new(read_slice(iter, 32).ok_or(ProgramError::InvalidInstructionData)?);
         Ok(Self::FinalizeDAppTransaction {
             account_guid_hash,
-            dapp,
-            instructions: read_instructions(iter)?,
+            params_hash,
         })
     }
 

@@ -12,6 +12,7 @@ use crate::model::multisig_op::{ApprovalDisposition, MultisigOp, MultisigOpParam
 use crate::model::wallet::Wallet;
 use solana_program::account_info::{next_account_info, AccountInfo};
 use solana_program::entrypoint::ProgramResult;
+use solana_program::hash::Hash;
 use solana_program::instruction::Instruction;
 use solana_program::msg;
 use solana_program::program::invoke_signed;
@@ -25,7 +26,7 @@ pub fn init(
     accounts: &[AccountInfo],
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
-    instructions: Vec<Instruction>,
+    instruction_count: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
@@ -49,8 +50,6 @@ pub fn init(
         }
     }
 
-    let instructions_len = instructions.len();
-
     let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
     multisig_op.init(
         wallet.get_transfer_approvers_keys(&balance_account),
@@ -61,12 +60,7 @@ pub fn init(
             clock.unix_timestamp,
             balance_account.approval_timeout_for_transfer,
         )?,
-        MultisigOpParams::DAppTransaction {
-            wallet_address: *wallet_account_info.key,
-            account_guid_hash: *account_guid_hash,
-            dapp,
-            instructions,
-        },
+        None,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 
@@ -76,7 +70,7 @@ pub fn init(
         *wallet_account_info.key,
         *account_guid_hash,
         dapp,
-        instructions_len.as_u16(),
+        instruction_count,
     )?;
     DAppMultisigData::pack(
         multisig_data,
@@ -113,7 +107,7 @@ pub fn supply_instructions(
 
     for index in starting_index..starting_index + instructions.len().as_u8() {
         multisig_data.add_instruction(
-            index.as_u16(),
+            index,
             &instructions
                 .get(usize::from(index - starting_index))
                 .unwrap(),
@@ -123,18 +117,13 @@ pub fn supply_instructions(
     if multisig_data.all_instructions_supplied() {
         // compute hash and store in multisig op
         let params_hash = multisig_data.hash()?;
-
-        // this is just temporary while the params hash is still being calculated by init
-        if params_hash != multisig_op.params_hash.unwrap() {
-            panic!("HASHES DO NOT MATCH!!!");
-        }
         multisig_op.params_hash = Some(params_hash);
+        MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
     }
     DAppMultisigData::pack(
         multisig_data,
         &mut multisig_data_account_info.data.borrow_mut(),
     )?;
-    MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 
     Ok(())
 }
@@ -226,8 +215,7 @@ pub fn finalize(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     account_guid_hash: &BalanceAccountGuidHash,
-    dapp: DAppBookEntry,
-    instructions: &Vec<Instruction>,
+    params_hash: &Hash,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
@@ -242,19 +230,23 @@ pub fn finalize(
     }
 
     let multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
+    let multisig_data = DAppMultisigData::unpack(&multisig_data_account_info.data.borrow())?;
 
-    let expected_params = MultisigOpParams::DAppTransaction {
-        wallet_address: *wallet_account_info.key,
-        account_guid_hash: *account_guid_hash,
-        instructions: instructions.clone(),
-        dapp,
-    };
+    let instructions = multisig_data.instructions()?;
+    let (is_approved, is_final) = {
+        let expected_params = MultisigOpParams::DAppTransaction {
+            wallet_address: *wallet_account_info.key,
+            account_guid_hash: *account_guid_hash,
+            dapp: multisig_data.dapp,
+            instructions: instructions.clone(),
+        };
 
-    const NOT_FINAL: u32 = WalletError::TransferDispositionNotFinal as u32;
-    let (is_approved, is_final) = match multisig_op.approved(&expected_params, &clock) {
-        Ok(a) => (a, true),
-        Err(ProgramError::Custom(NOT_FINAL)) => (false, false),
-        Err(e) => return Err(e),
+        const NOT_FINAL: u32 = WalletError::TransferDispositionNotFinal as u32;
+        match multisig_op.approved(&expected_params, &clock, Some(params_hash)) {
+            Ok(a) => (a, true),
+            Err(ProgramError::Custom(NOT_FINAL)) => (false, false),
+            Err(e) => return Err(e),
+        }
     };
 
     let bump_seed =
