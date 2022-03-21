@@ -8,7 +8,7 @@ use crate::handlers::utils::{
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
 use crate::model::dapp_multisig_data::DAppMultisigData;
-use crate::model::multisig_op::{ApprovalDisposition, MultisigOp, MultisigOpParams};
+use crate::model::multisig_op::{ApprovalDisposition, MultisigOp};
 use crate::model::wallet::Wallet;
 use solana_program::account_info::{next_account_info, AccountInfo};
 use solana_program::entrypoint::ProgramResult;
@@ -96,34 +96,56 @@ pub fn supply_instructions(
     }
     // TODO - once we are storing the initiator in the multisig op (PRIME-3999), verify that the supplied one matches
 
-    let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
+    let params_hash = {
+        let mut multisig_data =
+            DAppMultisigData::unpack_unchecked(&multisig_data_account_info.data.borrow())?;
 
-    if multisig_op.params_hash.is_some() {
-        //return Err(WalletError::DAppTransactionAlreadyInitialized);
-    }
+        for index in starting_index..starting_index + instructions.len().as_u8() {
+            multisig_data.add_instruction(
+                index,
+                &instructions
+                    .get(usize::from(index - starting_index))
+                    .unwrap(),
+            )?;
+        }
 
-    let mut multisig_data =
-        DAppMultisigData::unpack_unchecked(&multisig_data_account_info.data.borrow())?;
+        let params_hash = if multisig_data.all_instructions_supplied() {
+            Some(multisig_data.hash()?)
+        } else {
+            None
+        };
 
-    for index in starting_index..starting_index + instructions.len().as_u8() {
-        multisig_data.add_instruction(
-            index,
-            &instructions
-                .get(usize::from(index - starting_index))
-                .unwrap(),
+        DAppMultisigData::pack(
+            multisig_data,
+            &mut multisig_data_account_info.data.borrow_mut(),
         )?;
-    }
 
-    if multisig_data.all_instructions_supplied() {
-        // compute hash and store in multisig op
-        let params_hash = multisig_data.hash()?;
-        multisig_op.params_hash = Some(params_hash);
+        params_hash
+    };
+
+    // separate block so memory from unpacking the data gets reused
+    if let Some(_) = params_hash {
+        let mut multisig_op =
+            MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
+
+        if multisig_op.params_hash.is_some() {
+            //return Err(WalletError::DAppTransactionAlreadyInitialized);
+        }
+
+        multisig_op.params_hash = params_hash;
+
+        // record approval
+        if let Some(record) = multisig_op
+            .disposition_records
+            .iter_mut()
+            .find(|r| r.approver == *initiator_account_info.key)
+        {
+            if record.disposition == ApprovalDisposition::NONE {
+                record.disposition = ApprovalDisposition::APPROVE
+            }
+        }
         MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
     }
-    DAppMultisigData::pack(
-        multisig_data,
-        &mut multisig_data_account_info.data.borrow_mut(),
-    )?;
 
     Ok(())
 }
@@ -220,7 +242,7 @@ pub fn finalize(
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
     let multisig_data_account_info = next_program_account_info(accounts_iter, program_id)?;
-    let wallet_account_info = next_program_account_info(accounts_iter, program_id)?;
+    let _wallet_account_info = next_program_account_info(accounts_iter, program_id)?;
     let balance_account = next_account_info(accounts_iter)?;
     let rent_collector_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
@@ -234,15 +256,8 @@ pub fn finalize(
 
     let instructions = multisig_data.instructions()?;
     let (is_approved, is_final) = {
-        let expected_params = MultisigOpParams::DAppTransaction {
-            wallet_address: *wallet_account_info.key,
-            account_guid_hash: *account_guid_hash,
-            dapp: multisig_data.dapp,
-            instructions: instructions.clone(),
-        };
-
         const NOT_FINAL: u32 = WalletError::TransferDispositionNotFinal as u32;
-        match multisig_op.approved(&expected_params, &clock, Some(params_hash)) {
+        match multisig_op.approved(multisig_data.hash()?, &clock, Some(params_hash)) {
             Ok(a) => (a, true),
             Err(ProgramError::Custom(NOT_FINAL)) => (false, false),
             Err(e) => return Err(e),

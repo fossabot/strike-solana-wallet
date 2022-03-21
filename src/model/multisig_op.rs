@@ -312,20 +312,24 @@ impl MultisigOp {
 
     pub fn approved(
         &self,
-        expected_params: &MultisigOpParams,
+        expected_param_hash: Hash,
         clock: &Clock,
         supplied_param_hash: Option<&Hash>,
     ) -> Result<bool, ProgramError> {
         match self.params_hash {
             Some(hash) => {
-                if expected_params.hash() != hash {
+                if expected_param_hash != hash {
                     return Err(WalletError::InvalidSignature.into());
+                }
+                if let Some(supplied_hash) = supplied_param_hash {
+                    if *supplied_hash != hash {
+                        return Err(WalletError::InvalidSignature.into());
+                    }
                 }
             }
             None => {
                 if let Some(hash) = supplied_param_hash {
-                    if expected_params.hash() != *hash {
-                        msg!("expected params: {:?}", expected_params);
+                    if expected_param_hash != *hash {
                         return Err(WalletError::InvalidSignature.into());
                     }
                 }

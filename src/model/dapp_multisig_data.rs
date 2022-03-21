@@ -1,5 +1,5 @@
 use crate::error::WalletError;
-use crate::instruction::{append_instruction, read_instruction};
+use crate::instruction::{append_instruction, read_instruction_from_slice};
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
@@ -90,13 +90,22 @@ impl DAppMultisigData {
         let mut buf = vec![0; DAppBookEntry::LEN];
         self.dapp.pack_into_slice(buf.as_mut_slice());
         bytes.extend_from_slice(&buf[..]);
+        bytes.put_u16_le(self.num_instructions.as_u16());
+        // appending the instructions to this vec could use too much memory
+        // instead, we define the hash for a dapp transaction to be an iterated hash this way:
+        // first, take the hash of everything in `bytes` up to this point:
+        let mut result = hash(&bytes);
+        // then, for each instruction, form a buffer with the previous hash followed by that
+        // instruction, and then hash that
         let instructions = self.instructions()?;
-        bytes.put_u16_le(instructions.len().as_u16());
         for instruction in instructions.into_iter() {
-            append_instruction(&instruction, &mut bytes);
+            let mut instruction_buffer: Vec<u8> = Vec::new();
+            instruction_buffer.extend_from_slice(result.as_ref());
+            append_instruction(&instruction, &mut instruction_buffer);
+            result = hash(&instruction_buffer);
         }
 
-        Ok(hash(&bytes))
+        Ok(result)
     }
 
     pub fn instructions(&self) -> Result<Vec<Instruction>, ProgramError> {
@@ -106,8 +115,7 @@ impl DAppMultisigData {
                 return Err(WalletError::OperationNotInitialized.into());
             }
             let offset = usize::from(instruction_offset - 1);
-            let bytes: Vec<u8> = self.instruction_data[offset..].to_vec();
-            read_instruction(&mut bytes.iter())
+            read_instruction_from_slice(&self.instruction_data[offset..])
         };
 
         (0..self.num_instructions)

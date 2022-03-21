@@ -1178,6 +1178,46 @@ pub fn read_instruction(iter: &mut Iter<u8>) -> Result<Instruction, ProgramError
     })
 }
 
+pub fn read_instruction_from_slice(slice: &[u8]) -> Result<Instruction, ProgramError> {
+    // first check that it is big enough for program id and account meta count
+    if slice.len() < PUBKEY_BYTES + 2 {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let program_id = Pubkey::new(&slice[0..PUBKEY_BYTES]);
+    let mut u16_len: [u8; 2] = [0; 2];
+    u16_len.copy_from_slice(&slice[PUBKEY_BYTES..PUBKEY_BYTES + 2]);
+    let account_meta_count = usize::from(u16::from_le_bytes(u16_len));
+    // now check that it is big enough for all account metas + data len
+    if slice.len() < PUBKEY_BYTES + 2 + account_meta_count * (PUBKEY_BYTES + 1) + 2 {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let accounts = (0..account_meta_count)
+        .map(|ix| {
+            let account_meta_start = PUBKEY_BYTES + 2 + ix * (PUBKEY_BYTES + 1);
+            let flags = slice[account_meta_start];
+            let pubkey =
+                Pubkey::new(&slice[account_meta_start + 1..account_meta_start + 1 + PUBKEY_BYTES]);
+            AccountMeta {
+                is_writable: (flags & 1) == 1,
+                is_signer: (flags & 2) == 2,
+                pubkey,
+            }
+        })
+        .collect();
+    let data_len_start = PUBKEY_BYTES + 2 + account_meta_count * (PUBKEY_BYTES + 1);
+    u16_len.copy_from_slice(&slice[data_len_start..data_len_start + 2]);
+    let data_len = usize::from(u16::from_le_bytes(u16_len));
+    if slice.len() < data_len_start + 2 + data_len {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    Ok(Instruction {
+        program_id,
+        accounts,
+        data: slice[data_len_start + 2..data_len_start + 2 + data_len].to_vec(),
+    })
+}
+
 pub fn append_instruction(instruction: &Instruction, dst: &mut Vec<u8>) {
     dst.extend_from_slice(instruction.program_id.as_ref());
     dst.put_u16_le(instruction.accounts.len() as u16);

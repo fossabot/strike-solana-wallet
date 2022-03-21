@@ -137,7 +137,7 @@ where
 
     let multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
 
-    if multisig_op.approved(&expected_params, &clock, None)? {
+    if multisig_op.approved(expected_params.hash(), &clock, None)? {
         on_op_approved()?
     }
 
