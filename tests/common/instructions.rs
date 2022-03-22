@@ -541,12 +541,12 @@ pub fn init_dapp_transaction(
     initiator_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
-    instructions: Vec<Instruction>,
+    instruction_count: u8,
 ) -> Instruction {
     let data = ProgramInstruction::InitDAppTransaction {
         account_guid_hash: *account_guid_hash,
         dapp,
-        instructions,
+        instruction_count,
     }
     .borrow()
     .pack();
@@ -572,16 +572,10 @@ pub fn supply_dapp_transaction_instructions(
     multisig_data_account: &Pubkey,
     initiator_account: &Pubkey,
     starting_index: u8,
-    account_metas: &Vec<AccountMeta>,
     instructions: &Vec<Instruction>,
 ) -> Instruction {
     let mut data = Vec::<u8>::new();
-    pack_supply_dapp_transaction_instructions(
-        starting_index,
-        account_metas,
-        instructions,
-        &mut data,
-    );
+    pack_supply_dapp_transaction_instructions(starting_index, instructions, &mut data);
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*multisig_data_account, false),
@@ -603,13 +597,12 @@ pub fn finalize_dapp_transaction(
     balance_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
-    dapp: DAppBookEntry,
+    params_hash: &Hash,
     instructions: &Vec<Instruction>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeDAppTransaction {
         account_guid_hash: *account_guid_hash,
-        dapp,
-        instructions: instructions.clone(),
+        params_hash: *params_hash,
     }
     .borrow()
     .pack();

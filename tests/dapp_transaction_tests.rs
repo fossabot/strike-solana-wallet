@@ -2,8 +2,10 @@
 
 use std::borrow::BorrowMut;
 
+use bitvec::macros::internal::funty::Fundamental;
+use solana_program::hash::{hash, Hash};
+use solana_program::instruction::Instruction;
 use solana_program::instruction::InstructionError::Custom;
-use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
 use solana_program::{system_instruction, system_program};
@@ -21,10 +23,8 @@ use common::instructions::{
 pub use common::utils::*;
 use strike_wallet::error::WalletError;
 use strike_wallet::model::address_book::{DAppBookEntry, DAppBookEntryNameHash};
-use strike_wallet::model::balance_account::BalanceAccountGuidHash;
 use strike_wallet::model::dapp_multisig_data::DAppMultisigData;
 use strike_wallet::model::multisig_op::{ApprovalDisposition, BooleanSetting, MultisigOp};
-use strike_wallet::utils::unique_account_metas;
 
 use crate::common::utils;
 use crate::utils::BalanceAccountTestContext;
@@ -36,9 +36,41 @@ struct DAppTest {
     balance_account: Pubkey,
     multisig_op_account: Keypair,
     multisig_data_account: Keypair,
-    dapp: DAppBookEntry,
     inner_instructions: Vec<Instruction>,
     inner_multisig_op_account: Keypair,
+    params_hash: Hash,
+}
+
+async fn inner_instructions(
+    context: &mut BalanceAccountTestContext,
+    inner_multisig_op_account: &Pubkey,
+    balance_account: &Pubkey,
+    amount: u64,
+) -> Vec<Instruction> {
+    let rent = context.banks_client.get_rent().await.unwrap();
+    let multisig_op_account_rent = rent.minimum_balance(MultisigOp::LEN);
+    vec![
+        system_instruction::create_account(
+            &context.payer.pubkey(),
+            inner_multisig_op_account,
+            multisig_op_account_rent,
+            MultisigOp::LEN as u64,
+            &context.program_id,
+        ),
+        init_transfer(
+            &context.program_id,
+            &context.wallet_account.pubkey(),
+            &inner_multisig_op_account,
+            &context.initiator_account.pubkey(),
+            balance_account,
+            &context.destination.pubkey(),
+            context.balance_account_guid_hash,
+            amount,
+            context.destination_name_hash,
+            &system_program::id(),
+            &context.payer.pubkey(),
+        ),
+    ]
 }
 
 async fn setup_dapp_test() -> DAppTest {
@@ -65,28 +97,13 @@ async fn setup_dapp_test() -> DAppTest {
         name_hash: DAppBookEntryNameHash::new(&hash_of(b"Strike Wallet")),
     };
 
-    let inner_instructions = vec![
-        system_instruction::create_account(
-            &context.payer.pubkey(),
-            &inner_multisig_op_account.pubkey(),
-            multisig_op_account_rent,
-            MultisigOp::LEN as u64,
-            &context.program_id,
-        ),
-        init_transfer(
-            &context.program_id,
-            &context.wallet_account.pubkey(),
-            &inner_multisig_op_account.pubkey(),
-            &context.initiator_account.pubkey(),
-            &balance_account,
-            &context.destination.pubkey(),
-            context.balance_account_guid_hash,
-            123,
-            context.destination_name_hash,
-            &system_program::id(),
-            &context.payer.pubkey(),
-        ),
-    ];
+    let inner_instructions = inner_instructions(
+        &mut context,
+        &inner_multisig_op_account.pubkey(),
+        &balance_account,
+        123,
+    )
+    .await;
 
     context
         .banks_client
@@ -114,7 +131,7 @@ async fn setup_dapp_test() -> DAppTest {
                     &context.initiator_account.pubkey(),
                     &context.balance_account_guid_hash,
                     dapp,
-                    inner_instructions.clone(),
+                    inner_instructions.len().as_u8(),
                 ),
             ],
             Some(&context.payer.pubkey()),
@@ -130,14 +147,12 @@ async fn setup_dapp_test() -> DAppTest {
         .unwrap();
 
     // supply the instructions
-    let inner_account_metas = unique_account_metas(&inner_instructions, &Vec::new());
     // send them in two separate transactions, with the second one sent first
     supply_instructions(
         &mut context,
         &multisig_op_account,
         &multisig_data_account,
         1,
-        &inner_account_metas,
         &vec![inner_instructions[1].clone()],
     )
     .await
@@ -147,20 +162,36 @@ async fn setup_dapp_test() -> DAppTest {
         &multisig_op_account,
         &multisig_data_account,
         0,
-        &inner_account_metas,
         &vec![inner_instructions[0].clone()],
     )
     .await
     .unwrap();
+
+    let mut multisig_data =
+        DAppMultisigData::unpack_unchecked(&[0; DAppMultisigData::LEN]).unwrap();
+    multisig_data
+        .init(
+            context.wallet_account.pubkey(),
+            context.balance_account_guid_hash.clone(),
+            dapp,
+            inner_instructions.len().as_u8(),
+        )
+        .unwrap();
+
+    for (ix, instruction) in inner_instructions.iter().enumerate() {
+        multisig_data
+            .add_instruction(ix.as_u8(), instruction)
+            .unwrap()
+    }
 
     DAppTest {
         context,
         balance_account,
         multisig_op_account,
         multisig_data_account,
-        dapp,
         inner_instructions,
         inner_multisig_op_account,
+        params_hash: multisig_data.hash().unwrap(),
     }
 }
 
@@ -183,7 +214,7 @@ async fn test_dapp_transaction_simulation() {
                     &dapp_test.balance_account,
                     &context.payer.pubkey(),
                     &context.balance_account_guid_hash,
-                    dapp_test.dapp,
+                    &dapp_test.params_hash,
                     &dapp_test.inner_instructions,
                 )],
                 Some(&context.payer.pubkey()),
@@ -207,7 +238,31 @@ async fn test_dapp_transaction_bad_signature() {
 
     let mut context = dapp_test.context;
 
-    // attempt to finalize with bad signature (because of incorrect account guid hash) should fail
+    let params_hash = utils::get_operation_hash(
+        context.banks_client.borrow_mut(),
+        dapp_test.multisig_op_account.pubkey(),
+    )
+    .await;
+    let approver = &context.approvers[0];
+    let approve_transaction = Transaction::new_signed_with_payer(
+        &[set_approval_disposition(
+            &context.program_id,
+            &dapp_test.multisig_op_account.pubkey(),
+            &approver.pubkey(),
+            ApprovalDisposition::APPROVE,
+            params_hash,
+        )],
+        Some(&context.payer.pubkey()),
+        &[&context.payer, approver],
+        context.recent_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(approve_transaction)
+        .await
+        .unwrap();
+
+    // attempt to finalize with bad param hash
     assert_eq!(
         context
             .banks_client
@@ -219,8 +274,8 @@ async fn test_dapp_transaction_bad_signature() {
                     &dapp_test.multisig_data_account.pubkey(),
                     &dapp_test.balance_account,
                     &context.payer.pubkey(),
-                    &BalanceAccountGuidHash::zero(),
-                    dapp_test.dapp,
+                    &context.balance_account_guid_hash,
+                    &hash(&[0]),
                     &dapp_test.inner_instructions,
                 )],
                 Some(&context.payer.pubkey()),
@@ -279,7 +334,7 @@ async fn test_dapp_transaction() {
                 &dapp_test.balance_account,
                 &context.payer.pubkey(),
                 &context.balance_account_guid_hash,
-                dapp_test.dapp,
+                &dapp_test.params_hash,
                 &dapp_test.inner_instructions,
             )],
             Some(&context.payer.pubkey()),
@@ -347,7 +402,7 @@ async fn test_dapp_transaction_denied() {
                 &dapp_test.balance_account,
                 &context.payer.pubkey(),
                 &context.balance_account_guid_hash,
-                dapp_test.dapp,
+                &dapp_test.params_hash,
                 &dapp_test.inner_instructions,
             )],
             Some(&context.payer.pubkey()),
@@ -381,7 +436,7 @@ async fn test_dapp_transaction_denied() {
 #[tokio::test]
 async fn test_dapp_transaction_with_spl_transfers() {
     let (mut context, balance_account) =
-        utils::setup_balance_account_tests_and_finalize(Some(200000)).await;
+        utils::setup_balance_account_tests_and_finalize(Some(100000)).await;
 
     account_settings_update(&mut context, None, Some(BooleanSetting::On), None).await;
 
@@ -468,7 +523,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
                     &context.initiator_account.pubkey(),
                     &context.balance_account_guid_hash,
                     dapp,
-                    inner_instructions.clone(),
+                    inner_instructions.len().as_u8(),
                 ),
             ],
             Some(&context.payer.pubkey()),
@@ -483,6 +538,82 @@ async fn test_dapp_transaction_with_spl_transfers() {
         .await
         .unwrap();
 
+    // attempting to approve or finalize before supplying the instructions results in an error
+    let approver = &context.approvers[0];
+    let approve_transaction = Transaction::new_signed_with_payer(
+        &[set_approval_disposition(
+            &context.program_id,
+            &multisig_op_account.pubkey(),
+            &approver.pubkey(),
+            ApprovalDisposition::APPROVE,
+            Hash::new_unique(), // doesn't matter
+        )],
+        Some(&context.payer.pubkey()),
+        &[&context.payer, approver],
+        context.recent_blockhash,
+    );
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(approve_transaction)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(0, Custom(WalletError::OperationNotInitialized as u32)),
+    );
+
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[finalize_dapp_transaction(
+                    &context.program_id,
+                    &context.wallet_account.pubkey(),
+                    &multisig_op_account.pubkey(),
+                    &multisig_data_account.pubkey(),
+                    &balance_account,
+                    &context.payer.pubkey(),
+                    &context.balance_account_guid_hash,
+                    &Hash::new_unique(), // doesn't matter
+                    &inner_instructions,
+                )],
+                Some(&context.payer.pubkey()),
+                &[&context.payer, &mint, &mint_authority],
+                context.recent_blockhash,
+            ))
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(0, Custom(WalletError::OperationNotInitialized as u32)),
+    );
+
+    supply_instructions(
+        &mut context,
+        &multisig_op_account,
+        &multisig_data_account,
+        0,
+        &inner_instructions,
+    )
+    .await
+    .unwrap();
+
+    let mut multisig_data =
+        DAppMultisigData::unpack_unchecked(&[0; DAppMultisigData::LEN]).unwrap();
+    multisig_data
+        .init(
+            context.wallet_account.pubkey(),
+            context.balance_account_guid_hash.clone(),
+            dapp,
+            inner_instructions.len().as_u8(),
+        )
+        .unwrap();
+
+    for (ix, instruction) in inner_instructions.iter().enumerate() {
+        multisig_data
+            .add_instruction(ix.as_u8(), instruction)
+            .unwrap()
+    }
+
     // attempting to finalize before approval should result in a transaction simulation
     assert_eq!(
         context
@@ -496,7 +627,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
                     &balance_account,
                     &context.payer.pubkey(),
                     &context.balance_account_guid_hash,
-                    dapp,
+                    &multisig_data.hash().unwrap(),
                     &inner_instructions,
                 )],
                 Some(&context.payer.pubkey()),
@@ -512,7 +643,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
 
 #[tokio::test]
 async fn test_dapp_transaction_without_dapps_enabled() {
-    let (mut context, _balance_account) =
+    let (mut context, balance_account) =
         utils::setup_balance_account_tests_and_finalize(None).await;
 
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -524,6 +655,13 @@ async fn test_dapp_transaction_without_dapps_enabled() {
         address: context.program_id.clone(),
         name_hash: DAppBookEntryNameHash::new(&hash_of(b"Strike Wallet")),
     };
+    let inner_instructions = inner_instructions(
+        &mut context,
+        &multisig_op_account.pubkey(),
+        &balance_account,
+        123,
+    )
+    .await;
     assert_eq!(
         context
             .banks_client
@@ -551,7 +689,7 @@ async fn test_dapp_transaction_without_dapps_enabled() {
                         &context.initiator_account.pubkey(),
                         &context.balance_account_guid_hash,
                         dapp,
-                        vec![],
+                        inner_instructions.len().as_u8(),
                     ),
                 ],
                 Some(&context.payer.pubkey()),
@@ -572,7 +710,7 @@ async fn test_dapp_transaction_without_dapps_enabled() {
 
 #[tokio::test]
 async fn test_dapp_transaction_unwhitelisted() {
-    let (mut context, _balance_account) =
+    let (mut context, balance_account) =
         utils::setup_balance_account_tests_and_finalize(None).await;
 
     account_settings_update(
@@ -592,6 +730,13 @@ async fn test_dapp_transaction_unwhitelisted() {
         address: context.program_id.clone(),
         name_hash: DAppBookEntryNameHash::new(&hash_of(b"Strike Wallet")),
     };
+    let inner_instructions = inner_instructions(
+        &mut context,
+        &multisig_op_account.pubkey(),
+        &balance_account,
+        123,
+    )
+    .await;
     assert_eq!(
         context
             .banks_client
@@ -619,7 +764,7 @@ async fn test_dapp_transaction_unwhitelisted() {
                         &context.initiator_account.pubkey(),
                         &context.balance_account_guid_hash,
                         dapp,
-                        vec![],
+                        inner_instructions.len().as_u8(),
                     ),
                 ],
                 Some(&context.payer.pubkey()),
@@ -640,7 +785,7 @@ async fn test_dapp_transaction_unwhitelisted() {
 
 #[tokio::test]
 async fn test_dapp_transaction_whitelisted() {
-    let (mut context, _balance_account) =
+    let (mut context, balance_account) =
         utils::setup_balance_account_tests_and_finalize(None).await;
 
     account_settings_update(
@@ -655,6 +800,13 @@ async fn test_dapp_transaction_whitelisted() {
     let multisig_op_account = Keypair::new();
     let multisig_data_account_rent = context.rent.minimum_balance(DAppMultisigData::LEN);
     let multisig_data_account = Keypair::new();
+    let inner_instructions = inner_instructions(
+        &mut context,
+        &multisig_op_account.pubkey(),
+        &balance_account,
+        123,
+    )
+    .await;
     context
         .banks_client
         .process_transaction(Transaction::new_signed_with_payer(
@@ -681,7 +833,7 @@ async fn test_dapp_transaction_whitelisted() {
                     &context.initiator_account.pubkey(),
                     &context.balance_account_guid_hash,
                     context.allowed_dapp,
-                    vec![],
+                    inner_instructions.len().as_u8(),
                 ),
             ],
             Some(&context.payer.pubkey()),
@@ -720,28 +872,13 @@ async fn test_supply_instruction_errors() {
         name_hash: DAppBookEntryNameHash::new(&hash_of(b"Strike Wallet")),
     };
 
-    let inner_instructions = vec![
-        system_instruction::create_account(
-            &context.payer.pubkey(),
-            &inner_multisig_op_account.pubkey(),
-            multisig_op_account_rent,
-            MultisigOp::LEN as u64,
-            &context.program_id,
-        ),
-        init_transfer(
-            &context.program_id,
-            &context.wallet_account.pubkey(),
-            &inner_multisig_op_account.pubkey(),
-            &context.initiator_account.pubkey(),
-            &balance_account,
-            &context.destination.pubkey(),
-            context.balance_account_guid_hash,
-            123,
-            context.destination_name_hash,
-            &system_program::id(),
-            &context.payer.pubkey(),
-        ),
-    ];
+    let inner_instructions = inner_instructions(
+        &mut context,
+        &inner_multisig_op_account.pubkey(),
+        &balance_account,
+        123,
+    )
+    .await;
 
     context
         .banks_client
@@ -769,7 +906,7 @@ async fn test_supply_instruction_errors() {
                     &context.initiator_account.pubkey(),
                     &context.balance_account_guid_hash,
                     dapp,
-                    inner_instructions.clone(),
+                    inner_instructions.len().as_u8(),
                 ),
             ],
             Some(&context.payer.pubkey()),
@@ -785,15 +922,12 @@ async fn test_supply_instruction_errors() {
         .unwrap();
 
     // test that you cannot supply an instruction outside of the range
-    let inner_account_metas = unique_account_metas(&inner_instructions, &Vec::new());
-
     assert_eq!(
         supply_instructions(
             &mut context,
             &multisig_op_account,
             &multisig_data_account,
             2,
-            &inner_account_metas,
             &vec![inner_instructions[1].clone()]
         )
         .await
@@ -808,7 +942,6 @@ async fn test_supply_instruction_errors() {
         &multisig_op_account,
         &multisig_data_account,
         0,
-        &inner_account_metas,
         &vec![inner_instructions[0].clone()],
     )
     .await
@@ -820,7 +953,6 @@ async fn test_supply_instruction_errors() {
             &multisig_op_account,
             &multisig_data_account,
             0,
-            &inner_account_metas,
             &vec![inner_instructions[1].clone()]
         )
         .await
@@ -831,6 +963,17 @@ async fn test_supply_instruction_errors() {
             Custom(WalletError::DAppInstructionAlreadySupplied as u32)
         ),
     );
+
+    // test that you cannot supply an instruction more than once
+    supply_instructions(
+        &mut context,
+        &multisig_op_account,
+        &multisig_data_account,
+        0,
+        &vec![inner_instructions[0].clone()],
+    )
+    .await
+    .unwrap();
 }
 
 async fn supply_instructions(
@@ -838,7 +981,6 @@ async fn supply_instructions(
     multisig_op_account: &Keypair,
     multisig_data_account: &Keypair,
     starting_index: u8,
-    account_metas: &Vec<AccountMeta>,
     instructions: &Vec<Instruction>,
 ) -> transport::Result<()> {
     context
@@ -850,7 +992,6 @@ async fn supply_instructions(
                 &multisig_data_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 starting_index,
-                account_metas,
                 instructions,
             )],
             Some(&context.payer.pubkey()),
