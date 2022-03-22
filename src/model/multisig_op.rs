@@ -229,7 +229,7 @@ impl MultisigOp {
         approvals_required: u8,
         started_at: i64,
         expires_at: i64,
-        params: MultisigOpParams,
+        params: Option<MultisigOpParams>,
     ) -> ProgramResult {
         self.disposition_records = approvers
             .iter()
@@ -243,7 +243,7 @@ impl MultisigOp {
             })
             .collect::<Vec<_>>();
         self.dispositions_required = approvals_required;
-        self.params_hash = Some(params.hash());
+        self.params_hash = params.map_or(None, |p| Some(p.hash()));
         self.is_initialized = true;
         self.started_at = started_at;
         self.expires_at = expires_at;
@@ -312,16 +312,27 @@ impl MultisigOp {
 
     pub fn approved(
         &self,
-        expected_params: &MultisigOpParams,
+        expected_param_hash: Hash,
         clock: &Clock,
+        supplied_param_hash: Option<&Hash>,
     ) -> Result<bool, ProgramError> {
         match self.params_hash {
             Some(hash) => {
-                if expected_params.hash() != hash {
+                if expected_param_hash != hash {
                     return Err(WalletError::InvalidSignature.into());
+                }
+                if let Some(supplied_hash) = supplied_param_hash {
+                    if *supplied_hash != hash {
+                        return Err(WalletError::InvalidSignature.into());
+                    }
                 }
             }
             None => {
+                if let Some(hash) = supplied_param_hash {
+                    if expected_param_hash != *hash {
+                        return Err(WalletError::InvalidSignature.into());
+                    }
+                }
                 return Err(WalletError::OperationNotInitialized.into());
             }
         }
