@@ -8,7 +8,7 @@ use crate::handlers::utils::{
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
 use crate::model::dapp_multisig_data::DAppMultisigData;
-use crate::model::multisig_op::{ApprovalDisposition, MultisigOp};
+use crate::model::multisig_op::{ApprovalDisposition, MultisigOp, OperationDisposition};
 use crate::model::wallet::Wallet;
 use solana_program::account_info::{next_account_info, AccountInfo};
 use solana_program::entrypoint::ProgramResult;
@@ -128,10 +128,6 @@ pub fn supply_instructions(
         let mut multisig_op =
             MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
 
-        if multisig_op.params_hash.is_some() {
-            //return Err(WalletError::DAppTransactionAlreadyInitialized);
-        }
-
         multisig_op.params_hash = params_hash;
 
         // record approval
@@ -144,6 +140,12 @@ pub fn supply_instructions(
                 record.disposition = ApprovalDisposition::APPROVE
             }
         }
+        if multisig_op.get_disposition_count(ApprovalDisposition::APPROVE)
+            == multisig_op.dispositions_required
+        {
+            multisig_op.operation_disposition = OperationDisposition::APPROVED
+        }
+
         MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
     }
 

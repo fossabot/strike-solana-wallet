@@ -963,6 +963,17 @@ async fn test_supply_instruction_errors() {
             Custom(WalletError::DAppInstructionAlreadySupplied as u32)
         ),
     );
+
+    // test that you cannot supply an instruction more than once
+    supply_instructions(
+        &mut context,
+        &multisig_op_account,
+        &multisig_data_account,
+        0,
+        &vec![inner_instructions[0].clone()],
+    )
+    .await
+    .unwrap();
 }
 
 async fn supply_instructions(
