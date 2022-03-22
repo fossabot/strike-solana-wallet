@@ -98,7 +98,7 @@ pub fn supply_instructions(
 
     let params_hash = {
         let mut multisig_data =
-            DAppMultisigData::unpack_unchecked(&multisig_data_account_info.data.borrow())?;
+            DAppMultisigData::unpack(&multisig_data_account_info.data.borrow())?;
 
         for index in starting_index..starting_index + instructions.len().as_u8() {
             multisig_data.add_instruction(
@@ -125,8 +125,7 @@ pub fn supply_instructions(
 
     // separate block so memory from unpacking the data gets reused
     if let Some(_) = params_hash {
-        let mut multisig_op =
-            MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
+        let mut multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
 
         multisig_op.params_hash = params_hash;
 
