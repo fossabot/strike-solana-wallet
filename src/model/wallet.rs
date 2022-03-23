@@ -49,9 +49,9 @@ impl IsInitialized for Wallet {
 }
 
 impl Wallet {
-    pub const MAX_BALANCE_ACCOUNTS: usize = 10;
+    pub const MAX_BALANCE_ACCOUNTS: usize = 9;
     pub const MAX_SIGNERS: usize = 24;
-    pub const MAX_ADDRESS_BOOK_ENTRIES: usize = 96;
+    pub const MAX_ADDRESS_BOOK_ENTRIES: usize = 88;
     pub const MIN_APPROVAL_TIMEOUT: Duration = Duration::from_secs(60);
     pub const MAX_APPROVAL_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 365);
     pub const MAX_DAPP_BOOK_ENTRIES: usize = 20;
