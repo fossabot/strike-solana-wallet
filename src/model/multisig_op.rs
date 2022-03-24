@@ -1,5 +1,6 @@
 use crate::constants::{HASH_LEN, PUBKEY_BYTES};
 use crate::error::WalletError;
+use crate::handlers::utils::log_op_disposition;
 use crate::instruction::{
     append_instruction, AddressBookUpdate, BalanceAccountCreation, BalanceAccountPolicyUpdate,
     DAppBookUpdate, WalletConfigPolicyUpdate,
@@ -387,7 +388,7 @@ impl MultisigOp {
         if clock.unix_timestamp > self.expires_at {
             operation_disposition = OperationDisposition::EXPIRED
         }
-        msg!("OperationDisposition: [{}]", operation_disposition.to_u8());
+        log_op_disposition(operation_disposition);
 
         if operation_disposition == OperationDisposition::APPROVED {
             return Ok(true);

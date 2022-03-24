@@ -12,7 +12,7 @@ use spl_token::state::Account as SPLAccount;
 
 use crate::error::WalletError;
 use crate::handlers::utils::{
-    calculate_expires, collect_remaining_balance, get_clock_from_next_account,
+    calculate_expires, collect_remaining_balance, get_clock_from_next_account, log_op_disposition,
     next_program_account_info, validate_balance_account_and_get_seed,
 };
 use crate::model::address_book::DAppBookEntry;
@@ -315,6 +315,7 @@ pub fn finalize(
             Err(WalletError::SimulationFinished.into())
         }
     } else {
+        log_op_disposition(OperationDisposition::EXPIRED);
         cleanup(
             &multisig_op_account_info,
             &multisig_data_account_info,
