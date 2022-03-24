@@ -10,7 +10,7 @@ use crate::model::signer::Signer;
 use crate::model::wallet::Wallet;
 use crate::serialization_utils::pack_option;
 use crate::utils::SlotId;
-use crate::version::VERSION;
+use crate::version::{Versioned, VERSION};
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 use bitvec::macros::internal::funty::Fundamental;
 use bytes::BufMut;
@@ -394,6 +394,18 @@ impl MultisigOp {
         }
 
         Ok(false)
+    }
+}
+
+impl Versioned for MultisigOp {
+    fn version_from_slice(src: &[u8]) -> Result<u32, ProgramError> {
+        if src.len() < 5 {
+            Err(ProgramError::InvalidAccountData)
+        } else {
+            let mut buf: [u8; 4] = [0; 4];
+            buf.copy_from_slice(&src[1..=4]);
+            Ok(u32::from_le_bytes(buf))
+        }
     }
 }
 
