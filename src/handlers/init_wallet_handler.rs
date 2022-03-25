@@ -26,9 +26,10 @@ pub fn handle(
     let fee_payer_account_info = next_account_info(accounts_iter)?;
 
     validate_wallet_account(
-        wallet_account_info.key,
+        wallet_account_info,
         wallet_account_bump_seed,
         program_id,
+        false,
     )?;
 
     let rent = Rent::get()?;

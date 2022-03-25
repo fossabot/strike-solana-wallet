@@ -66,9 +66,10 @@ pub fn calculate_expires(start: i64, duration: Duration) -> Result<i64, ProgramE
 }
 
 pub fn validate_wallet_account(
-    wallet_account: &Pubkey,
+    wallet_account: &AccountInfo,
     wallet_account_bump_seed: u8,
     program_id: &Pubkey,
+    must_be_initialized: bool,
 ) -> Result<(), ProgramError> {
     if let Ok(calculated_wallet_account) = Pubkey::create_program_address(
         &[
@@ -78,10 +79,14 @@ pub fn validate_wallet_account(
         ],
         program_id,
     ) {
-        if calculated_wallet_account != *wallet_account {
+        if calculated_wallet_account != *wallet_account.key {
             Err(WalletError::AccountNotRecognized.into())
         } else {
-            Ok(())
+            if !must_be_initialized || wallet_account.data.borrow()[0] == 1 {
+                Ok(())
+            } else {
+                Err(ProgramError::UninitializedAccount)
+            }
         }
     } else {
         Err(WalletError::AccountNotRecognized.into())

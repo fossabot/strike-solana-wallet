@@ -23,9 +23,10 @@ pub fn init(
     let clock = get_clock_from_next_account(accounts_iter)?;
 
     validate_wallet_account(
-        wallet_account_info.key,
+        wallet_account_info,
         wallet_account_bump_seed,
         program_id,
+        true,
     )?;
 
     let mut wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
@@ -63,9 +64,10 @@ pub fn finalize(
     let clock = get_clock_from_next_account(accounts_iter)?;
 
     validate_wallet_account(
-        wallet_account_info.key,
+        wallet_account_info,
         wallet_account_bump_seed,
         program_id,
+        true,
     )?;
 
     let mut wallet = Wallet::unpack(&wallet_account_info.data.borrow_mut())?;

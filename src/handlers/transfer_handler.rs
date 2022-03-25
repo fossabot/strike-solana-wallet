@@ -44,9 +44,10 @@ pub fn init(
     let fee_payer_account = next_account_info(accounts_iter)?;
 
     validate_wallet_account(
-        wallet_account_info.key,
+        wallet_account_info,
         wallet_account_bump_seed,
         program_id,
+        true,
     )?;
 
     let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
@@ -153,9 +154,10 @@ pub fn finalize(
     }
 
     validate_wallet_account(
-        wallet_account_info.key,
+        wallet_account_info,
         wallet_account_bump_seed,
         program_id,
+        true,
     )?;
 
     finalize_multisig_op(
