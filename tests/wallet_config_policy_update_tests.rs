@@ -24,7 +24,7 @@ async fn wallet_config_policy_update() {
     let started_at = SystemTime::now();
     let mut context = setup_test(40_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -40,6 +40,7 @@ async fn wallet_config_policy_update() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -55,7 +56,7 @@ async fn wallet_config_policy_update() {
     .await
     .unwrap();
 
-    let wallet = get_wallet(&mut context.banks_client, &wallet_account.pubkey()).await;
+    let wallet = get_wallet(&mut context.banks_client, &wallet_account).await;
     assert!(!wallet.config_policy_update_locked);
 
     let update = WalletConfigPolicyUpdate {
@@ -67,7 +68,8 @@ async fn wallet_config_policy_update() {
 
     let multisig_op_account = utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[2],
         &update,
     )
@@ -91,13 +93,13 @@ async fn wallet_config_policy_update() {
         ],
         OperationDisposition::NONE,
         &MultisigOpParams::UpdateWalletConfigPolicy {
-            wallet_address: wallet_account.pubkey(),
+            wallet_address: wallet_account,
             update: update.clone(),
         },
     );
 
     assert!(
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey())
+        get_wallet(&mut context.banks_client, &wallet_account)
             .await
             .config_policy_update_locked
     );
@@ -111,7 +113,8 @@ async fn wallet_config_policy_update() {
 
     utils::finalize_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         multisig_op_account,
         &update.clone(),
     )
@@ -125,7 +128,7 @@ async fn wallet_config_policy_update() {
 
     assert_eq!(
         expected_wallet,
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey()).await
+        get_wallet(&mut context.banks_client, &wallet_account).await
     );
 
     // verify optional updates
@@ -133,7 +136,8 @@ async fn wallet_config_policy_update() {
 
     utils::update_wallet_config_policy(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &assistant_account,
         &WalletConfigPolicyUpdate {
             approvals_required_for_config: Some(2),
@@ -147,14 +151,15 @@ async fn wallet_config_policy_update() {
 
     assert_eq!(
         expected_wallet,
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey()).await
+        get_wallet(&mut context.banks_client, &wallet_account).await
     );
 
     expected_wallet.approval_timeout_for_config = Duration::from_secs(3600);
 
     utils::update_wallet_config_policy(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &assistant_account,
         &WalletConfigPolicyUpdate {
             approvals_required_for_config: None,
@@ -168,7 +173,7 @@ async fn wallet_config_policy_update() {
 
     assert_eq!(
         expected_wallet,
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey()).await
+        get_wallet(&mut context.banks_client, &wallet_account).await
     );
 }
 
@@ -176,7 +181,7 @@ async fn wallet_config_policy_update() {
 async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     let mut context = setup_test(40_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -192,6 +197,7 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -223,7 +229,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
 
     let multisig_op_account = utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &assistant_account,
         &first_update,
     )
@@ -234,7 +241,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &second_update,
         )
@@ -252,7 +260,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     .await;
     utils::finalize_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         multisig_op_account,
         &first_update.clone(),
     )
@@ -261,7 +270,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     // allowed because first update is canceled
     let multisig_op_account = utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &assistant_account,
         &first_update,
     )
@@ -272,7 +282,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &second_update,
         )
@@ -290,7 +301,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     .await;
     utils::finalize_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         multisig_op_account,
         &first_update.clone(),
     )
@@ -299,7 +311,8 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
     // allowed because there is no pending update anymore
     utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &assistant_account,
         &second_update,
     )
@@ -311,7 +324,7 @@ async fn only_one_pending_wallet_config_policy_update_allowed_at_time() {
 async fn invalid_wallet_config_policy_updates() {
     let mut context = setup_test(40_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -327,6 +340,7 @@ async fn invalid_wallet_config_policy_updates() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -342,7 +356,8 @@ async fn invalid_wallet_config_policy_updates() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &WalletConfigPolicyUpdate {
                 approvals_required_for_config: Some(3),
@@ -360,7 +375,8 @@ async fn invalid_wallet_config_policy_updates() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &WalletConfigPolicyUpdate {
                 approvals_required_for_config: Some(2),
@@ -378,7 +394,8 @@ async fn invalid_wallet_config_policy_updates() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &WalletConfigPolicyUpdate {
                 approvals_required_for_config: Some(2),
@@ -395,7 +412,8 @@ async fn invalid_wallet_config_policy_updates() {
     assert_instruction_error(
         utils::init_wallet_config_policy_update(
             &mut context,
-            wallet_account.pubkey(),
+            wallet_account,
+            bump_seed,
             &assistant_account,
             &WalletConfigPolicyUpdate {
                 approvals_required_for_config: Some(2),
@@ -408,13 +426,32 @@ async fn invalid_wallet_config_policy_updates() {
         1,
         Custom(WalletError::InvalidSlot as u32),
     );
+
+    // verify that the wallet account bump seed has to match
+    assert_instruction_error(
+        utils::init_wallet_config_policy_update(
+            &mut context,
+            wallet_account,
+            bump_seed.wrapping_add(1),
+            &assistant_account,
+            &WalletConfigPolicyUpdate {
+                approvals_required_for_config: Some(2),
+                approval_timeout_for_config: Some(Duration::from_secs(3200)),
+                add_config_approvers: vec![],
+                remove_config_approvers: vec![],
+            },
+        )
+        .await,
+        1,
+        Custom(WalletError::AccountNotRecognized as u32),
+    )
 }
 
 #[tokio::test]
 async fn wallet_config_policy_update_initiator_approval() {
     let mut context = setup_test(30_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -430,6 +467,7 @@ async fn wallet_config_policy_update_initiator_approval() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -454,7 +492,8 @@ async fn wallet_config_policy_update_initiator_approval() {
 
     let multisig_op_account = utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[0],
         &update.clone(),
     )
@@ -486,7 +525,8 @@ async fn wallet_config_policy_update_initiator_approval() {
 
     utils::finalize_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         multisig_op_account,
         &update.clone(),
     )
@@ -494,7 +534,8 @@ async fn wallet_config_policy_update_initiator_approval() {
 
     let multisig_op_account = utils::init_wallet_config_policy_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[0],
         &WalletConfigPolicyUpdate {
             approvals_required_for_config: None,

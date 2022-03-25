@@ -27,20 +27,27 @@ use strike_wallet::{
 pub fn init_wallet(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_account: &Pubkey,
     initial_config: InitialWalletConfig,
+    fee_payer: &Pubkey,
 ) -> Instruction {
     let accounts = vec![
         AccountMeta::new(*wallet_account, false),
         AccountMeta::new_readonly(*assistant_account, true),
+        AccountMeta::new_readonly(*fee_payer, true),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
 
     Instruction {
         program_id: *program_id,
         accounts,
-        data: ProgramInstruction::InitWallet { initial_config }
-            .borrow()
-            .pack(),
+        data: ProgramInstruction::InitWallet {
+            wallet_account_bump_seed,
+            initial_config,
+        }
+        .borrow()
+        .pack(),
     }
 }
 
@@ -93,6 +100,7 @@ pub fn set_approval_disposition(
 pub fn init_balance_account_creation_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     slot_id: SlotId<BalanceAccount>,
@@ -111,6 +119,7 @@ pub fn init_balance_account_creation_instruction(
         multisig_op_account,
         initiator_account,
         ProgramInstruction::InitBalanceAccountCreation {
+            wallet_account_bump_seed,
             account_guid_hash,
             creation_params: BalanceAccountCreation {
                 slot_id,
@@ -129,12 +138,14 @@ pub fn init_balance_account_creation_instruction(
 pub fn finalize_balance_account_creation(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     creation_params: BalanceAccountCreation,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeBalanceAccountCreation {
+        wallet_account_bump_seed,
         account_guid_hash,
         creation_params,
     }
@@ -157,6 +168,7 @@ pub fn finalize_balance_account_creation(
 pub fn init_dapp_book_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     update: DAppBookUpdate,
@@ -166,20 +178,27 @@ pub fn init_dapp_book_update(
         wallet_account,
         multisig_op_account,
         initiator_account,
-        ProgramInstruction::InitDAppBookUpdate { update },
+        ProgramInstruction::InitDAppBookUpdate {
+            wallet_account_bump_seed,
+            update,
+        },
     )
 }
 
 pub fn finalize_dapp_book_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     update: DAppBookUpdate,
 ) -> Instruction {
-    let data = ProgramInstruction::FinalizeDAppBookUpdate { update }
-        .borrow()
-        .pack();
+    let data = ProgramInstruction::FinalizeDAppBookUpdate {
+        wallet_account_bump_seed,
+        update,
+    }
+    .borrow()
+    .pack();
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
@@ -197,6 +216,7 @@ pub fn finalize_dapp_book_update(
 pub fn init_balance_account_policy_update_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
@@ -211,6 +231,7 @@ pub fn init_balance_account_policy_update_instruction(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: ProgramInstruction::InitBalanceAccountPolicyUpdate {
+            wallet_account_bump_seed,
             account_guid_hash,
             update: update.clone(),
         }
@@ -222,6 +243,7 @@ pub fn init_balance_account_policy_update_instruction(
 pub fn finalize_balance_account_policy_update_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
@@ -238,6 +260,7 @@ pub fn finalize_balance_account_policy_update_instruction(
         program_id: *program_id,
         accounts,
         data: ProgramInstruction::FinalizeBalanceAccountPolicyUpdate {
+            wallet_account_bump_seed,
             account_guid_hash,
             update,
         }
@@ -249,6 +272,7 @@ pub fn finalize_balance_account_policy_update_instruction(
 pub fn init_transfer(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     source_account: &Pubkey,
@@ -260,6 +284,7 @@ pub fn init_transfer(
     fee_payer: &Pubkey,
 ) -> Instruction {
     let data = ProgramInstruction::InitTransfer {
+        wallet_account_bump_seed,
         account_guid_hash,
         amount,
         destination_name_hash,
@@ -297,6 +322,7 @@ pub fn finalize_transfer(
     program_id: &Pubkey,
     multisig_op_account: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     source_account: &Pubkey,
     destination_account: &Pubkey,
     rent_collector_account: &Pubkey,
@@ -306,6 +332,7 @@ pub fn finalize_transfer(
     token_authority: Option<&Pubkey>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeTransfer {
+        wallet_account_bump_seed,
         account_guid_hash,
         amount,
         token_mint: *token_mint,
@@ -352,6 +379,7 @@ pub fn finalize_transfer(
 pub fn init_wrap_unwrap(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     balance_account: &Pubkey,
@@ -360,6 +388,7 @@ pub fn init_wrap_unwrap(
     direction: WrapDirection,
 ) -> Instruction {
     let data = ProgramInstruction::InitWrapUnwrap {
+        wallet_account_bump_seed,
         account_guid_hash: *account_guid_hash,
         amount,
         direction,
@@ -397,6 +426,7 @@ pub fn finalize_wrap_unwrap(
     program_id: &Pubkey,
     multisig_op_account: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     balance_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
@@ -404,6 +434,7 @@ pub fn finalize_wrap_unwrap(
     direction: WrapDirection,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeWrapUnwrap {
+        wallet_account_bump_seed,
         account_guid_hash: *account_guid_hash,
         amount,
         direction,
@@ -437,6 +468,7 @@ pub fn finalize_wrap_unwrap(
 pub fn init_update_signer(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     slot_update_type: SlotUpdateType,
@@ -449,6 +481,7 @@ pub fn init_update_signer(
         multisig_op_account,
         initiator_account,
         ProgramInstruction::InitUpdateSigner {
+            wallet_account_bump_seed,
             slot_update_type,
             slot_id,
             signer,
@@ -459,6 +492,7 @@ pub fn init_update_signer(
 pub fn finalize_update_signer(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     slot_update_type: SlotUpdateType,
@@ -466,6 +500,7 @@ pub fn finalize_update_signer(
     signer: Signer,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeUpdateSigner {
+        wallet_account_bump_seed,
         slot_update_type,
         slot_id,
         signer,
@@ -490,6 +525,7 @@ pub fn finalize_update_signer(
 pub fn init_wallet_config_policy_update_instruction(
     program_id: Pubkey,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: Pubkey,
     initiator_account: Pubkey,
     update: &WalletConfigPolicyUpdate,
@@ -503,6 +539,7 @@ pub fn init_wallet_config_policy_update_instruction(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: ProgramInstruction::InitWalletConfigPolicyUpdate {
+            wallet_account_bump_seed,
             update: update.clone(),
         }
         .borrow()
@@ -513,6 +550,7 @@ pub fn init_wallet_config_policy_update_instruction(
 pub fn finalize_wallet_config_policy_update_instruction(
     program_id: Pubkey,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: Pubkey,
     rent_collector_account: Pubkey,
     update: &WalletConfigPolicyUpdate,
@@ -526,6 +564,7 @@ pub fn finalize_wallet_config_policy_update_instruction(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: ProgramInstruction::FinalizeWalletConfigPolicyUpdate {
+            wallet_account_bump_seed,
             update: update.clone(),
         }
         .borrow()
@@ -536,6 +575,7 @@ pub fn finalize_wallet_config_policy_update_instruction(
 pub fn init_dapp_transaction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     multisig_data_account: &Pubkey,
     initiator_account: &Pubkey,
@@ -544,6 +584,7 @@ pub fn init_dapp_transaction(
     instruction_count: u8,
 ) -> Instruction {
     let data = ProgramInstruction::InitDAppTransaction {
+        wallet_account_bump_seed,
         account_guid_hash: *account_guid_hash,
         dapp,
         instruction_count,
@@ -592,6 +633,7 @@ pub fn supply_dapp_transaction_instructions(
 pub fn finalize_dapp_transaction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     multisig_data_account: &Pubkey,
     balance_account: &Pubkey,
@@ -601,6 +643,7 @@ pub fn finalize_dapp_transaction(
     instructions: &Vec<Instruction>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeDAppTransaction {
+        wallet_account_bump_seed,
         account_guid_hash: *account_guid_hash,
         params_hash: *params_hash,
     }
@@ -640,6 +683,7 @@ pub fn finalize_dapp_transaction(
 pub fn init_account_settings_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
@@ -652,6 +696,7 @@ pub fn init_account_settings_update(
         multisig_op_account,
         initiator_account,
         ProgramInstruction::InitAccountSettingsUpdate {
+            wallet_account_bump_seed,
             account_guid_hash,
             whitelist_enabled: whitelist_status,
             dapps_enabled,
@@ -662,6 +707,7 @@ pub fn init_account_settings_update(
 pub fn finalize_account_settings_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
@@ -669,6 +715,7 @@ pub fn finalize_account_settings_update(
     dapps_enabled: Option<BooleanSetting>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeAccountSettingsUpdate {
+        wallet_account_bump_seed,
         account_guid_hash,
         whitelist_enabled: whitelist_status,
         dapps_enabled,
@@ -693,6 +740,7 @@ pub fn finalize_account_settings_update(
 pub fn init_balance_account_name_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
@@ -704,6 +752,7 @@ pub fn init_balance_account_name_update(
         multisig_op_account,
         initiator_account,
         ProgramInstruction::InitBalanceAccountNameUpdate {
+            wallet_account_bump_seed,
             account_guid_hash,
             account_name_hash,
         },
@@ -713,12 +762,14 @@ pub fn init_balance_account_name_update(
 pub fn finalize_balance_account_name_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     account_name_hash: BalanceAccountNameHash,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeBalanceAccountNameUpdate {
+        wallet_account_bump_seed,
         account_guid_hash,
         account_name_hash,
     }
@@ -742,6 +793,7 @@ pub fn finalize_balance_account_name_update(
 pub fn init_address_book_update_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
     add_address_book_entries: Vec<(SlotId<AddressBookEntry>, AddressBookEntry)>,
@@ -754,6 +806,7 @@ pub fn init_address_book_update_instruction(
         multisig_op_account,
         initiator_account,
         ProgramInstruction::InitAddressBookUpdate {
+            wallet_account_bump_seed,
             update: AddressBookUpdate {
                 add_address_book_entries: add_address_book_entries.clone(),
                 remove_address_book_entries: remove_address_book_entries.clone(),
@@ -766,13 +819,17 @@ pub fn init_address_book_update_instruction(
 pub fn finalize_address_book_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     update: AddressBookUpdate,
 ) -> Instruction {
-    let data = ProgramInstruction::FinalizeAddressBookUpdate { update }
-        .borrow()
-        .pack();
+    let data = ProgramInstruction::FinalizeAddressBookUpdate {
+        wallet_account_bump_seed,
+        update,
+    }
+    .borrow()
+    .pack();
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
@@ -790,6 +847,7 @@ pub fn finalize_address_book_update(
 pub fn init_balance_account_enable_spl_token(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     assistant_account: &Pubkey,
     token_mint_account: &Pubkey,
@@ -798,6 +856,7 @@ pub fn init_balance_account_enable_spl_token(
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> Instruction {
     let data = ProgramInstruction::InitSPLTokenAccountsCreation {
+        wallet_account_bump_seed,
         payer_account_guid_hash: payer_account_guid_hash.clone(),
         account_guid_hashes: account_guid_hashes.clone(),
     }
@@ -830,6 +889,7 @@ pub fn init_balance_account_enable_spl_token(
 pub fn finalize_balance_account_enable_spl_token(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: &Pubkey,
     rent_collector_account: &Pubkey,
     token_mint_account: &Pubkey,
@@ -840,6 +900,7 @@ pub fn finalize_balance_account_enable_spl_token(
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeSPLTokenAccountsCreation {
+        wallet_account_bump_seed,
         payer_account_guid_hash: payer_account_guid_hash.clone(),
         account_guid_hashes: account_guid_hashes.clone(),
     }

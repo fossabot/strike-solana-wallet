@@ -39,7 +39,7 @@ async fn test_balance_account_policy_update() {
 
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let balance_account = wallet
@@ -59,7 +59,7 @@ async fn test_balance_account_policy_update() {
     // verify that it was updated as expected
     let updated_wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let updated_balance_account = updated_wallet
@@ -101,7 +101,7 @@ async fn test_balance_account_policy_update() {
     // verify optional updates
     let mut expected_balance_account = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await
     .get_balance_account(&context.balance_account_guid_hash)
@@ -125,7 +125,7 @@ async fn test_balance_account_policy_update() {
         expected_balance_account,
         get_wallet(
             &mut context.pt_context.banks_client,
-            &context.wallet_account.pubkey()
+            &context.wallet_account
         )
         .await
         .get_balance_account(&context.balance_account_guid_hash)
@@ -149,7 +149,7 @@ async fn test_balance_account_policy_update() {
         expected_balance_account,
         get_wallet(
             &mut context.pt_context.banks_client,
-            &context.wallet_account.pubkey()
+            &context.wallet_account
         )
         .await
         .get_balance_account(&context.balance_account_guid_hash)
@@ -260,7 +260,8 @@ async fn test_only_one_pending_balance_account_policy_update_allowed_at_time() {
                 ),
                 init_balance_account_policy_update_instruction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &context.initiator_account.pubkey(),
                     context.balance_account_guid_hash,
@@ -288,7 +289,8 @@ async fn test_only_one_pending_balance_account_policy_update_allowed_at_time() {
         &multisig_op_account2,
         init_balance_account_policy_update_instruction(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account2.pubkey(),
             &context.initiator_account.pubkey(),
             context.balance_account_guid_hash,
@@ -316,7 +318,8 @@ async fn test_only_one_pending_balance_account_policy_update_allowed_at_time() {
         .process_transaction(Transaction::new_signed_with_payer(
             &[finalize_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
@@ -344,7 +347,8 @@ async fn test_only_one_pending_balance_account_policy_update_allowed_at_time() {
                 ),
                 init_balance_account_policy_update_instruction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &context.initiator_account.pubkey(),
                     context.balance_account_guid_hash,
@@ -369,7 +373,7 @@ async fn test_balance_account_policy_update_is_denied() {
 
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let balance_account = wallet
@@ -398,7 +402,8 @@ async fn test_balance_account_policy_update_is_denied() {
             ),
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 context.balance_account_guid_hash,
@@ -448,7 +453,8 @@ async fn test_balance_account_policy_update_is_denied() {
     let finalize_update = Transaction::new_signed_with_payer(
         &[finalize_balance_account_policy_update_instruction(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account.pubkey(),
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -468,7 +474,7 @@ async fn test_balance_account_policy_update_is_denied() {
     // verify that balance account was not changed
     let wallet_after_update = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let balance_account_after_update = wallet
@@ -544,7 +550,8 @@ async fn invalid_balance_account_policy_updates() {
             &multisig_op_account,
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 wrong_balance_account_guid_hash,
@@ -570,7 +577,8 @@ async fn invalid_balance_account_policy_updates() {
             &multisig_op_account,
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 context.balance_account_guid_hash,
@@ -596,7 +604,8 @@ async fn invalid_balance_account_policy_updates() {
             &multisig_op_account,
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 context.balance_account_guid_hash,
@@ -625,7 +634,8 @@ async fn invalid_balance_account_policy_updates() {
             &multisig_op_account,
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.initiator_account.pubkey(),
                 context.balance_account_guid_hash,

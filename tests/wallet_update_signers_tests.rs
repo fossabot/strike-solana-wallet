@@ -165,7 +165,8 @@ async fn test_remove_signer_fails_for_a_transfer_approver() {
         &multisig_op_account,
         instructions::init_update_signer(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account.pubkey(),
             &context.assistant_account.pubkey(),
             SlotUpdateType::Clear,

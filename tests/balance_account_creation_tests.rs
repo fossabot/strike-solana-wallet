@@ -70,7 +70,7 @@ async fn test_balance_account_creation() {
     // verify that it was created as expected
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
 
@@ -176,7 +176,8 @@ async fn test_balance_account_creation_not_signed_by_rent_collector() {
     let rent_collector = Keypair::new();
     let mut instruction = finalize_balance_account_creation(
         &context.program_id,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
+        context.wallet_account_bump_seed,
         &context.multisig_op_account.pubkey(),
         &rent_collector.pubkey(),
         context.balance_account_guid_hash,
@@ -211,7 +212,8 @@ async fn test_balance_account_creation_incorrect_hash() {
     let finalize_transaction_wrong_wallet_guid_hash = Transaction::new_signed_with_payer(
         &[finalize_balance_account_creation(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &context.multisig_op_account.pubkey(),
             &context.pt_context.payer.pubkey(),
             wrong_guid_hash,
@@ -238,7 +240,8 @@ async fn test_balance_account_creation_incorrect_hash() {
     let finalize_transaction_wrong_update = Transaction::new_signed_with_payer(
         &[finalize_balance_account_creation(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &context.multisig_op_account.pubkey(),
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -389,7 +392,7 @@ async fn test_multisig_op_version_mismatch() {
                     &context.multisig_op_account.pubkey(),
                     &approver.pubkey(),
                     ApprovalDisposition::APPROVE,
-                    Hash([0; 32]), // doesn't matter, it will fail for version mismatch first
+                    Hash::new_from_array([0; 32]), // doesn't matter, it will fail for version mismatch first
                 )],
                 Some(&context.pt_context.payer.pubkey()),
                 &[&context.pt_context.payer, approver],
@@ -445,7 +448,7 @@ async fn test_multisig_op_version_mismatch() {
 
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
 

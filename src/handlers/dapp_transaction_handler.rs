@@ -13,7 +13,7 @@ use spl_token::state::Account as SPLAccount;
 use crate::error::WalletError;
 use crate::handlers::utils::{
     calculate_expires, collect_remaining_balance, get_clock_from_next_account, log_op_disposition,
-    next_program_account_info, validate_balance_account_and_get_seed,
+    next_program_account_info, validate_balance_account_and_get_seed, validate_wallet_account,
 };
 use crate::model::address_book::DAppBookEntry;
 use crate::model::balance_account::BalanceAccountGuidHash;
@@ -25,6 +25,7 @@ use crate::version::{Versioned, VERSION};
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
     instruction_count: u8,
@@ -35,6 +36,12 @@ pub fn init(
     let wallet_account_info = next_program_account_info(accounts_iter, program_id)?;
     let initiator_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
     let balance_account = wallet.get_balance_account(account_guid_hash)?;
@@ -243,13 +250,14 @@ fn balance_changes_from_simulation(
 pub fn finalize(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     account_guid_hash: &BalanceAccountGuidHash,
     params_hash: &Hash,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
     let multisig_data_account_info = next_program_account_info(accounts_iter, program_id)?;
-    let _wallet_account_info = next_program_account_info(accounts_iter, program_id)?;
+    let wallet_account_info = next_program_account_info(accounts_iter, program_id)?;
     let balance_account = next_account_info(accounts_iter)?;
     let rent_collector_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
@@ -257,6 +265,12 @@ pub fn finalize(
     if !rent_collector_account_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     if MultisigOp::version_from_slice(&multisig_op_account_info.data.borrow())? == VERSION {
         let multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;

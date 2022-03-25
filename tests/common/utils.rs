@@ -15,10 +15,9 @@ use sha2::{Digest, Sha256};
 use solana_program::instruction::{Instruction, InstructionError};
 use solana_program::rent::Rent;
 use solana_program::system_program;
-use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+use solana_program_test::{processor, BanksClientError, ProgramTest, ProgramTestContext};
 use solana_sdk::account::ReadableAccount;
 use solana_sdk::transaction::TransactionError;
-use solana_sdk::transport;
 use std::borrow::BorrowMut;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -50,7 +49,6 @@ use {
         signature::{Keypair, Signer as SdkSigner},
         system_instruction,
         transaction::Transaction,
-        transport::TransportError,
     },
     strike_wallet::{model::wallet::Wallet, processor::Processor},
 };
@@ -98,7 +96,7 @@ pub struct TestContext {
 pub async fn setup_test(max_compute_units: u64) -> TestContext {
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(max_compute_units);
+    pt.set_compute_max_units(max_compute_units);
     let (mut banks_client, payer, recent_blockhash) = pt.start().await;
     let rent = banks_client.get_rent().await.unwrap();
 
@@ -125,12 +123,16 @@ pub fn create_program_owned_account_instruction(
     )
 }
 
+pub fn wallet_account_and_seed(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"version", &VERSION.to_le_bytes()], &program_id)
+}
+
 pub async fn init_multisig_op(
     test_context: &mut TestContext,
     multisig_op_account: Keypair,
     instruction: Instruction,
     initiator_account: &Keypair,
-) -> transport::Result<()> {
+) -> Result<(), BanksClientError> {
     test_context
         .banks_client
         .process_transaction(Transaction::new_signed_with_payer(
@@ -216,15 +218,17 @@ pub async fn get_multisig_op_data(
 pub async fn init_wallet_config_policy_update(
     test_context: &mut TestContext,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     initiator: &Keypair,
     update: &WalletConfigPolicyUpdate,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let multisig_op_keypair = Keypair::new();
     let multisig_op_pubkey = multisig_op_keypair.pubkey();
 
     let instruction = init_wallet_config_policy_update_instruction(
         test_context.program_id,
         wallet_account,
+        wallet_account_bump_seed,
         multisig_op_pubkey,
         initiator.pubkey(),
         update,
@@ -238,6 +242,7 @@ pub async fn init_wallet_config_policy_update(
 pub async fn finalize_wallet_config_policy_update(
     test_context: &mut TestContext,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: Pubkey,
     update: &WalletConfigPolicyUpdate,
 ) {
@@ -247,6 +252,7 @@ pub async fn finalize_wallet_config_policy_update(
         finalize_wallet_config_policy_update_instruction(
             test_context.program_id,
             wallet_account,
+            wallet_account_bump_seed,
             multisig_op_account,
             test_context.payer.pubkey(),
             update,
@@ -258,20 +264,27 @@ pub async fn finalize_wallet_config_policy_update(
 pub async fn update_wallet_config_policy(
     test_context: &mut TestContext,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     initiator_account: &Keypair,
     update: &WalletConfigPolicyUpdate,
     approvers: Vec<&Keypair>,
 ) {
-    let multisig_op_account =
-        init_wallet_config_policy_update(test_context, wallet_account, &initiator_account, &update)
-            .await
-            .unwrap();
+    let multisig_op_account = init_wallet_config_policy_update(
+        test_context,
+        wallet_account,
+        wallet_account_bump_seed,
+        &initiator_account,
+        &update,
+    )
+    .await
+    .unwrap();
 
     approve_n_of_n_multisig_op(test_context, &multisig_op_account, approvers).await;
 
     finalize_wallet_config_policy_update(
         test_context,
         wallet_account,
+        wallet_account_bump_seed,
         multisig_op_account,
         &update.clone(),
     )
@@ -279,7 +292,7 @@ pub async fn update_wallet_config_policy(
 }
 
 pub fn assert_instruction_error<R: Debug>(
-    res: Result<R, TransportError>,
+    res: Result<R, BanksClientError>,
     expected_instruction_index: u8,
     expected_error: InstructionError,
 ) {
@@ -294,31 +307,22 @@ pub async fn init_wallet(
     payer: &Keypair,
     recent_blockhash: Hash,
     program_id: &Pubkey,
-    wallet_account: &Keypair,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_account: &Keypair,
     initial_config: InitialWalletConfig,
-) -> Result<(), TransportError> {
-    let rent = banks_client.get_rent().await.unwrap();
-    let program_rent = rent.minimum_balance(Wallet::LEN);
-
+) -> Result<(), BanksClientError> {
     let transaction = Transaction::new_signed_with_payer(
-        &[
-            system_instruction::create_account(
-                &payer.pubkey(),
-                &wallet_account.pubkey(),
-                program_rent,
-                Wallet::LEN as u64,
-                &program_id,
-            ),
-            instructions::init_wallet(
-                &program_id,
-                &wallet_account.pubkey(),
-                &assistant_account.pubkey(),
-                initial_config,
-            ),
-        ],
+        &[instructions::init_wallet(
+            &program_id,
+            &wallet_account,
+            wallet_account_bump_seed,
+            &assistant_account.pubkey(),
+            initial_config,
+            &payer.pubkey(),
+        )],
         Some(&payer.pubkey()),
-        &[payer, wallet_account, assistant_account],
+        &[payer, assistant_account],
         recent_blockhash,
     );
     banks_client.process_transaction(transaction).await?;
@@ -330,7 +334,8 @@ pub struct WalletTestContext {
     pub program_id: Pubkey,
     pub banks_client: BanksClient,
     pub rent: Rent,
-    pub wallet_account: Keypair,
+    pub wallet_account: Pubkey,
+    pub wallet_account_bump_seed: u8,
     pub assistant_account: Keypair,
     pub recent_blockhash: Hash,
 }
@@ -341,9 +346,11 @@ pub async fn setup_wallet_test(
 ) -> WalletTestContext {
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(max_compute_units);
+    pt.set_compute_max_units(max_compute_units);
     let (mut banks_client, payer, recent_blockhash) = pt.start().await;
     let rent = banks_client.get_rent().await.unwrap();
+
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&program_id);
 
     let mut context = WalletTestContext {
         program_id,
@@ -351,7 +358,8 @@ pub async fn setup_wallet_test(
         rent,
         payer,
         recent_blockhash,
-        wallet_account: Keypair::new(),
+        wallet_account,
+        wallet_account_bump_seed: bump_seed,
         assistant_account: Keypair::new(),
     };
 
@@ -361,6 +369,7 @@ pub async fn setup_wallet_test(
         context.recent_blockhash,
         &context.program_id,
         &context.wallet_account,
+        context.wallet_account_bump_seed,
         &context.assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: initial_config.approvals_required_for_config,
@@ -381,7 +390,7 @@ pub async fn init_update_signer(
     slot_update_type: SlotUpdateType,
     slot_id: usize,
     signer: Signer,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let rent = context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -398,7 +407,8 @@ pub async fn init_update_signer(
             ),
             instructions::init_update_signer(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_pubkey,
                 &initiator_account.pubkey(),
                 slot_update_type,
@@ -474,7 +484,7 @@ pub async fn update_signer(
     assert_eq!(
         multisig_op.params_hash.unwrap(),
         MultisigOpParams::UpdateSigner {
-            wallet_address: context.wallet_account.pubkey(),
+            wallet_address: context.wallet_account,
             slot_update_type,
             slot_id: SlotId::new(slot_id),
             signer
@@ -514,7 +524,8 @@ pub async fn update_signer(
     let finalize_transaction = Transaction::new_signed_with_payer(
         &[finalize_update_signer(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account,
             &context.payer.pubkey(),
             slot_update_type,
@@ -542,7 +553,7 @@ pub async fn update_signer(
         .unwrap();
 
     // verify the config has been updated
-    let wallet = get_wallet(&mut context.banks_client, &context.wallet_account.pubkey()).await;
+    let wallet = get_wallet(&mut context.banks_client, &context.wallet_account).await;
     assert_eq!(expected_signers.unwrap(), wallet.signers);
 
     // verify the multisig op account is closed
@@ -584,7 +595,8 @@ pub async fn account_settings_update(
             ),
             init_account_settings_update(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &context.approvers[0].pubkey(),
                 context.balance_account_guid_hash,
@@ -657,7 +669,7 @@ pub async fn account_settings_update(
     assert_eq!(
         multisig_op.params_hash.unwrap(),
         MultisigOpParams::UpdateBalanceAccountSettings {
-            wallet_address: context.wallet_account.pubkey(),
+            wallet_address: context.wallet_account,
             account_guid_hash: context.balance_account_guid_hash,
             whitelist_enabled: whitelist_status,
             dapps_enabled,
@@ -681,7 +693,8 @@ pub async fn account_settings_update(
     let finalize_transaction = Transaction::new_signed_with_payer(
         &[finalize_account_settings_update(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account.pubkey(),
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -736,15 +749,17 @@ pub async fn account_settings_update(
 pub async fn init_dapp_book_update(
     test_context: &mut TestContext,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     initiator: &Keypair,
     update: DAppBookUpdate,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let multisig_op_keypair = Keypair::new();
     let multisig_op_pubkey = multisig_op_keypair.pubkey();
 
     let instruction = instructions::init_dapp_book_update(
         &test_context.program_id,
         &wallet_account,
+        wallet_account_bump_seed,
         &multisig_op_pubkey,
         &initiator.pubkey(),
         update,
@@ -758,6 +773,7 @@ pub async fn init_dapp_book_update(
 pub async fn finalize_dapp_book_update(
     test_context: &mut TestContext,
     wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_account: Pubkey,
     update: DAppBookUpdate,
 ) {
@@ -767,6 +783,7 @@ pub async fn finalize_dapp_book_update(
         instructions::finalize_dapp_book_update(
             &test_context.program_id,
             &wallet_account,
+            wallet_account_bump_seed,
             &multisig_op_account,
             &test_context.payer.pubkey(),
             update,
@@ -782,7 +799,7 @@ pub async fn verify_whitelist_status(
 ) {
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let account = wallet
@@ -802,7 +819,7 @@ pub async fn verify_dapps_enabled(
 ) {
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let account = wallet
@@ -818,7 +835,7 @@ pub async fn verify_balance_account_name_hash(
 ) {
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     let account = wallet
@@ -989,7 +1006,8 @@ pub struct BalanceAccountTestContext {
     pub program_id: Pubkey,
     pub pt_context: ProgramTestContext,
     pub rent: Rent,
-    pub wallet_account: Keypair,
+    pub wallet_account: Pubkey,
+    pub wallet_account_bump_seed: u8,
     pub multisig_op_account: Keypair,
     pub assistant_account: Keypair,
     pub initiator_account: Keypair,
@@ -1023,7 +1041,7 @@ pub async fn init_balance_account_creation(
     initiator_account: &Keypair,
     balance_account_guid_hash: BalanceAccountGuidHash,
     creation_params: BalanceAccountCreation,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let rent = context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -1040,7 +1058,8 @@ pub async fn init_balance_account_creation(
             ),
             init_balance_account_creation_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
                 creation_params.slot_id,
@@ -1067,14 +1086,14 @@ pub async fn init_balance_account_creation(
 }
 
 pub async fn setup_balance_account_tests(
-    bpf_compute_max_units: Option<u64>,
+    compute_max_units: Option<u64>,
     add_extra_transfer_approver: bool,
 ) -> BalanceAccountTestContext {
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(bpf_compute_max_units.unwrap_or(50_000));
+    pt.set_compute_max_units(compute_max_units.unwrap_or(50_000));
     let mut pt_context = pt.start_with_context().await;
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&program_id);
     let multisig_op_account = Keypair::new();
     let assistant_account = Keypair::new();
 
@@ -1097,6 +1116,7 @@ pub async fn setup_balance_account_tests(
         pt_context.last_blockhash,
         &program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -1146,7 +1166,8 @@ pub async fn setup_balance_account_tests(
             ),
             init_balance_account_creation_instruction(
                 &program_id,
-                &wallet_account.pubkey(),
+                &wallet_account,
+                bump_seed,
                 &multisig_op_account.pubkey(),
                 &approvers[2].pubkey(),
                 SlotId::new(0),
@@ -1212,7 +1233,7 @@ pub async fn setup_balance_account_tests(
     assert_eq!(
         multisig_op.params_hash.unwrap(),
         MultisigOpParams::CreateBalanceAccount {
-            wallet_address: wallet_account.pubkey(),
+            wallet_address: wallet_account,
             account_guid_hash: balance_account_guid_hash,
             creation_params: expected_creation_params.clone(),
         }
@@ -1224,6 +1245,7 @@ pub async fn setup_balance_account_tests(
         pt_context,
         rent,
         wallet_account,
+        wallet_account_bump_seed: bump_seed,
         multisig_op_account,
         assistant_account,
         initiator_account: Keypair::from_base58_string(&approvers[2].to_base58_string()),
@@ -1268,9 +1290,9 @@ pub async fn setup_create_balance_account_failure_tests(
 ) -> TransactionError {
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(bpf_compute_max_units.unwrap_or(25_000));
+    pt.set_compute_max_units(bpf_compute_max_units.unwrap_or(25_000));
     let (mut banks_client, payer, recent_blockhash) = pt.start().await;
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&program_id);
     let multisig_op_account = Keypair::new();
     let assistant_account = Keypair::new();
 
@@ -1298,6 +1320,7 @@ pub async fn setup_create_balance_account_failure_tests(
         recent_blockhash,
         &program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 1,
@@ -1327,7 +1350,8 @@ pub async fn setup_create_balance_account_failure_tests(
             ),
             init_balance_account_creation_instruction(
                 &program_id,
-                &wallet_account.pubkey(),
+                &wallet_account,
+                bump_seed,
                 &multisig_op_account.pubkey(),
                 &assistant_account.pubkey(),
                 SlotId::new(0),
@@ -1360,7 +1384,8 @@ pub async fn finalize_balance_account_creation(context: &mut BalanceAccountTestC
     let finalize_transaction = Transaction::new_signed_with_payer(
         &[instructions::finalize_balance_account_creation(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &context.multisig_op_account.pubkey(),
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -1379,9 +1404,9 @@ pub async fn finalize_balance_account_creation(context: &mut BalanceAccountTestC
 }
 
 pub async fn setup_balance_account_tests_and_finalize(
-    bpf_compute_max_units: Option<u64>,
+    compute_max_units: Option<u64>,
 ) -> (BalanceAccountTestContext, Pubkey) {
-    let mut context = setup_balance_account_tests(bpf_compute_max_units, false).await;
+    let mut context = setup_balance_account_tests(compute_max_units, false).await;
 
     approve_or_deny_n_of_n_multisig_op(
         context.pt_context.banks_client.borrow_mut(),
@@ -1430,7 +1455,8 @@ pub async fn setup_balance_account_tests_and_finalize(
 
     let multisig_op_account = init_dapp_book_update(
         &mut test_context,
-        context.wallet_account.pubkey(),
+        context.wallet_account,
+        context.wallet_account_bump_seed,
         &context.assistant_account,
         update.clone(),
     )
@@ -1446,7 +1472,8 @@ pub async fn setup_balance_account_tests_and_finalize(
 
     finalize_dapp_book_update(
         &mut test_context,
-        context.wallet_account.pubkey(),
+        context.wallet_account,
+        context.wallet_account_bump_seed,
         multisig_op_account,
         update.clone(),
     )
@@ -1460,8 +1487,8 @@ pub async fn setup_transfer_test(
     initiator_account: &Keypair,
     balance_account: &Pubkey,
     token_mint: Option<&Pubkey>,
-    amount: Option<u64>,
-) -> (Keypair, transport::Result<()>) {
+    amount: u64,
+) -> (Keypair, Result<(), BanksClientError>) {
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_account_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -1481,13 +1508,14 @@ pub async fn setup_transfer_test(
                 ),
                 init_transfer(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &initiator_account.pubkey(),
                     &balance_account,
                     &context.destination.pubkey(),
                     context.balance_account_guid_hash,
-                    amount.unwrap_or(123),
+                    amount,
                     context.destination_name_hash,
                     token_mint.unwrap_or(&system_program::id()),
                     &context.pt_context.payer.pubkey(),
@@ -1539,7 +1567,7 @@ pub async fn init_address_book_update(
     context: &mut BalanceAccountTestContext,
     initiator_account: &Keypair,
     update: AddressBookUpdate,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -1556,7 +1584,8 @@ pub async fn init_address_book_update(
             ),
             init_address_book_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
                 update.add_address_book_entries,
@@ -1610,7 +1639,7 @@ pub async fn modify_address_book_and_whitelist(
         Some(error) => {
             assert_eq!(
                 init_result.unwrap_err().unwrap(),
-                TransactionError::InstructionError(1, error),
+                TransactionError::InstructionError(1, error)
             );
             return;
         }
@@ -1632,7 +1661,8 @@ pub async fn modify_address_book_and_whitelist(
     let finalize_update = Transaction::new_signed_with_payer(
         &[finalize_address_book_update(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account,
             &context.pt_context.payer.pubkey(),
             update,
@@ -1653,7 +1683,7 @@ pub async fn init_balance_account_name_hash_update(
     context: &mut BalanceAccountTestContext,
     initiator_account: &Keypair,
     account_name_hash: BalanceAccountNameHash,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -1670,7 +1700,8 @@ pub async fn init_balance_account_name_hash_update(
             ),
             init_balance_account_name_update(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
                 context.balance_account_guid_hash,
@@ -1732,7 +1763,8 @@ pub async fn update_balance_account_name_hash(
     let finalize_update_tx = Transaction::new_signed_with_payer(
         &[finalize_balance_account_name_update(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account,
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -1756,7 +1788,7 @@ pub async fn init_balance_account_policy_update(
     context: &mut BalanceAccountTestContext,
     initiator_account: &Keypair,
     update: BalanceAccountPolicyUpdate,
-) -> Result<Pubkey, TransportError> {
+) -> Result<Pubkey, BanksClientError> {
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
     let multisig_op_account = Keypair::new();
@@ -1773,7 +1805,8 @@ pub async fn init_balance_account_policy_update(
             ),
             init_balance_account_policy_update_instruction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_pubkey,
                 &initiator_account.pubkey(),
                 context.balance_account_guid_hash,
@@ -1834,7 +1867,8 @@ pub async fn update_balance_account_policy(
     let finalize_update_tx = Transaction::new_signed_with_payer(
         &[finalize_balance_account_policy_update_instruction(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &multisig_op_account,
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
@@ -2094,7 +2128,7 @@ pub async fn process_wrap(
     amount: u64,
     token_account_rent: u64,
     wrapped_sol_account: Pubkey,
-) -> transport::Result<()> {
+) -> Result<(), BanksClientError> {
     let multisig_op_account = Keypair::new();
 
     let init_result = context
@@ -2111,7 +2145,8 @@ pub async fn process_wrap(
                 ),
                 instructions::init_wrap_unwrap(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &context.assistant_account.pubkey(),
                     &balance_account,
@@ -2168,7 +2203,8 @@ pub async fn process_wrap(
             &[instructions::finalize_wrap_unwrap(
                 &context.program_id,
                 &multisig_op_account.pubkey(),
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &balance_account,
                 &context.pt_context.payer.pubkey(),
                 &context.balance_account_guid_hash,
@@ -2187,7 +2223,7 @@ pub async fn process_unwrapping(
     multisig_account_rent: u64,
     balance_account: Pubkey,
     unwrap_amount: u64,
-) -> transport::Result<()> {
+) -> Result<(), BanksClientError> {
     let unwrap_multisig_op_account = Keypair::new();
 
     context
@@ -2204,7 +2240,8 @@ pub async fn process_unwrapping(
                 ),
                 instructions::init_wrap_unwrap(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &unwrap_multisig_op_account.pubkey(),
                     &context.assistant_account.pubkey(),
                     &balance_account,
@@ -2243,7 +2280,8 @@ pub async fn process_unwrapping(
             &[instructions::finalize_wrap_unwrap(
                 &context.program_id,
                 &unwrap_multisig_op_account.pubkey(),
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &balance_account,
                 &context.pt_context.payer.pubkey(),
                 &context.balance_account_guid_hash,
@@ -2264,7 +2302,7 @@ pub async fn verify_address_book(
 ) {
     let wallet = get_wallet(
         &mut context.pt_context.banks_client,
-        &context.wallet_account.pubkey(),
+        &context.wallet_account,
     )
     .await;
     assert_eq!(
@@ -2316,7 +2354,8 @@ pub fn get_associated_token_account_addresses(
 /// Create a wallet with a barebones config. no adressbook entries or dapps.
 pub async fn create_wallet(
     context: &mut TestContext,
-    wallet_keypair: &Keypair,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_keypair: &Keypair,
     signer_keypairs: &Vec<Keypair>,
 ) {
@@ -2325,7 +2364,8 @@ pub async fn create_wallet(
         &context.payer,
         context.recent_blockhash,
         &context.program_id,
-        &wallet_keypair,
+        wallet_account,
+        wallet_account_bump_seed,
         &assistant_keypair,
         InitialWalletConfig {
             approvals_required_for_config: 1,
@@ -2351,7 +2391,8 @@ pub async fn create_wallet(
 /// PDA tuple, containing the PDA address and bump seed.
 pub async fn create_balance_accounts(
     context: &mut TestContext,
-    wallet_address: &Pubkey,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_keypair: &Keypair,
     approver_keypairs: &Vec<Keypair>,
     count: u8,
@@ -2368,7 +2409,8 @@ pub async fn create_balance_accounts(
             create_balance_account(
                 context,
                 slot_id,
-                wallet_address,
+                wallet_account,
+                wallet_account_bump_seed,
                 assistant_keypair,
                 approver_keypairs,
                 1,
@@ -2387,7 +2429,8 @@ pub async fn create_balance_accounts(
 pub async fn create_balance_account(
     context: &mut TestContext,
     slot_id: SlotId<BalanceAccount>,
-    wallet_address: &Pubkey,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_keypair: &Keypair,
     approver_keypairs: &Vec<Keypair>,
     approvals_required_for_transfer: u8,
@@ -2431,7 +2474,8 @@ pub async fn create_balance_account(
             ),
             init_balance_account_creation_instruction(
                 &context.program_id,
-                &wallet_address,
+                &wallet_account,
+                wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &assistant_keypair.pubkey(),
                 slot_id,
@@ -2474,7 +2518,8 @@ pub async fn create_balance_account(
     let finalize_transaction = Transaction::new_signed_with_payer(
         &[instructions::finalize_balance_account_creation(
             &context.program_id,
-            &wallet_address,
+            &wallet_account,
+            wallet_account_bump_seed,
             &multisig_op_account.pubkey(),
             &context.payer.pubkey(),
             balance_account_guid_hash,

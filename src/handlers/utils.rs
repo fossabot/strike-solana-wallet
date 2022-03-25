@@ -5,6 +5,7 @@ use crate::model::multisig_op::{
 };
 use crate::model::wallet::Wallet;
 use crate::version::{Versioned, VERSION};
+use solana_program::rent::Rent;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -62,6 +63,29 @@ pub fn calculate_expires(start: i64, duration: Duration) -> Result<i64, ProgramE
         return Err(ProgramError::InvalidArgument);
     }
     Ok(expires_at.unwrap())
+}
+
+pub fn validate_wallet_account(
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
+    program_id: &Pubkey,
+) -> Result<(), ProgramError> {
+    if let Ok(calculated_wallet_account) = Pubkey::create_program_address(
+        &[
+            b"version",
+            &VERSION.to_le_bytes(),
+            &[wallet_account_bump_seed],
+        ],
+        program_id,
+    ) {
+        if calculated_wallet_account != *wallet_account {
+            Err(WalletError::AccountNotRecognized.into())
+        } else {
+            Ok(())
+        }
+    } else {
+        Err(WalletError::AccountNotRecognized.into())
+    }
 }
 
 /// validate the PDA of a BalanceAccount and return its bump seed.
@@ -166,11 +190,19 @@ pub fn transfer_sol_checked<'a>(
     to: AccountInfo<'a>,
     lamports: u64,
 ) -> ProgramResult {
+    let balance_account_rent = Rent::get().unwrap().minimum_balance(0);
     if balance_account.lamports() < lamports {
         msg!(
             "Account only has {} lamports of {} requested",
             balance_account.lamports(),
             lamports
+        );
+        return Err(WalletError::InsufficientBalance.into());
+    } else if balance_account.lamports() - lamports < balance_account_rent {
+        msg!(
+            "Account would be left with {} lamports of {} required for rent exemption",
+            balance_account.lamports() - lamports,
+            balance_account_rent
         );
         return Err(WalletError::InsufficientBalance.into());
     }

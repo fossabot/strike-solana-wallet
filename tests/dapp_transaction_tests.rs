@@ -9,12 +9,11 @@ use solana_program::instruction::InstructionError::Custom;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
 use solana_program::{system_instruction, system_program};
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::account::{AccountSharedData, ReadableAccount, WritableAccount};
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer as SdkSigner;
 use solana_sdk::transaction::{Transaction, TransactionError};
-use solana_sdk::transport;
 
 pub use common::instructions::*;
 use common::instructions::{
@@ -59,7 +58,8 @@ async fn inner_instructions(
         ),
         init_transfer(
             &context.program_id,
-            &context.wallet_account.pubkey(),
+            &context.wallet_account,
+            context.wallet_account_bump_seed,
             &inner_multisig_op_account,
             &context.initiator_account.pubkey(),
             balance_account,
@@ -126,7 +126,8 @@ async fn setup_dapp_test() -> DAppTest {
                 ),
                 init_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &context.initiator_account.pubkey(),
@@ -172,7 +173,7 @@ async fn setup_dapp_test() -> DAppTest {
         DAppMultisigData::unpack_unchecked(&[0; DAppMultisigData::LEN]).unwrap();
     multisig_data
         .init(
-            context.wallet_account.pubkey(),
+            context.wallet_account,
             context.balance_account_guid_hash.clone(),
             dapp,
             inner_instructions.len().as_u8(),
@@ -210,7 +211,8 @@ async fn test_dapp_transaction_simulation() {
             .process_transaction(Transaction::new_signed_with_payer(
                 &[finalize_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &dapp_test.multisig_op_account.pubkey(),
                     &dapp_test.multisig_data_account.pubkey(),
                     &dapp_test.balance_account,
@@ -273,7 +275,8 @@ async fn test_dapp_transaction_bad_signature() {
             .process_transaction(Transaction::new_signed_with_payer(
                 &[finalize_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &dapp_test.multisig_op_account.pubkey(),
                     &dapp_test.multisig_data_account.pubkey(),
                     &dapp_test.balance_account,
@@ -334,7 +337,8 @@ async fn test_dapp_transaction() {
         .process_transaction(Transaction::new_signed_with_payer(
             &[finalize_dapp_transaction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &dapp_test.multisig_op_account.pubkey(),
                 &dapp_test.multisig_data_account.pubkey(),
                 &dapp_test.balance_account,
@@ -405,7 +409,8 @@ async fn test_dapp_transaction_denied() {
         .process_transaction(Transaction::new_signed_with_payer(
             &[finalize_dapp_transaction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &dapp_test.multisig_op_account.pubkey(),
                 &dapp_test.multisig_data_account.pubkey(),
                 &dapp_test.balance_account,
@@ -452,7 +457,7 @@ async fn test_dapp_transaction_denied() {
 #[tokio::test]
 async fn test_dapp_transaction_with_spl_transfers() {
     let (mut context, balance_account) =
-        utils::setup_balance_account_tests_and_finalize(Some(100000)).await;
+        utils::setup_balance_account_tests_and_finalize(Some(120000)).await;
 
     account_settings_update(&mut context, None, Some(BooleanSetting::On), None).await;
 
@@ -534,7 +539,8 @@ async fn test_dapp_transaction_with_spl_transfers() {
                 ),
                 init_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &context.initiator_account.pubkey(),
@@ -587,7 +593,8 @@ async fn test_dapp_transaction_with_spl_transfers() {
             .process_transaction(Transaction::new_signed_with_payer(
                 &[finalize_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &balance_account,
@@ -620,7 +627,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
         DAppMultisigData::unpack_unchecked(&[0; DAppMultisigData::LEN]).unwrap();
     multisig_data
         .init(
-            context.wallet_account.pubkey(),
+            context.wallet_account,
             context.balance_account_guid_hash.clone(),
             dapp,
             inner_instructions.len().as_u8(),
@@ -641,7 +648,8 @@ async fn test_dapp_transaction_with_spl_transfers() {
             .process_transaction(Transaction::new_signed_with_payer(
                 &[finalize_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &balance_account,
@@ -704,7 +712,8 @@ async fn test_dapp_transaction_without_dapps_enabled() {
                     ),
                     init_dapp_transaction(
                         &context.program_id,
-                        &context.wallet_account.pubkey(),
+                        &context.wallet_account,
+                        context.wallet_account_bump_seed,
                         &multisig_op_account.pubkey(),
                         &multisig_data_account.pubkey(),
                         &context.initiator_account.pubkey(),
@@ -780,7 +789,8 @@ async fn test_dapp_transaction_unwhitelisted() {
                     ),
                     init_dapp_transaction(
                         &context.program_id,
-                        &context.wallet_account.pubkey(),
+                        &context.wallet_account,
+                        context.wallet_account_bump_seed,
                         &multisig_op_account.pubkey(),
                         &multisig_data_account.pubkey(),
                         &context.initiator_account.pubkey(),
@@ -850,7 +860,8 @@ async fn test_dapp_transaction_whitelisted() {
                 ),
                 init_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &context.initiator_account.pubkey(),
@@ -924,7 +935,8 @@ async fn test_supply_instruction_errors() {
                 ),
                 init_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &context.initiator_account.pubkey(),
@@ -1006,7 +1018,7 @@ async fn supply_instructions(
     multisig_data_account: &Keypair,
     starting_index: u8,
     instructions: &Vec<Instruction>,
-) -> transport::Result<()> {
+) -> Result<(), BanksClientError> {
     context
         .pt_context
         .banks_client
@@ -1078,7 +1090,8 @@ async fn test_multisig_op_version_mismatch() {
                 ),
                 init_dapp_transaction(
                     &context.program_id,
-                    &context.wallet_account.pubkey(),
+                    &context.wallet_account,
+                    context.wallet_account_bump_seed,
                     &multisig_op_account.pubkey(),
                     &multisig_data_account.pubkey(),
                     &context.initiator_account.pubkey(),
@@ -1259,7 +1272,8 @@ async fn test_multisig_op_version_mismatch() {
         .process_transaction(Transaction::new_signed_with_payer(
             &[finalize_dapp_transaction(
                 &context.program_id,
-                &context.wallet_account.pubkey(),
+                &context.wallet_account,
+                context.wallet_account_bump_seed,
                 &multisig_op_account.pubkey(),
                 &multisig_data_account.pubkey(),
                 &balance_account,

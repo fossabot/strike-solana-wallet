@@ -40,10 +40,11 @@ async fn init_wallet() {
 
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(25_000);
+    pt.set_compute_max_units(25_000);
     let (mut banks_client, payer, recent_blockhash) = pt.start().await;
-    let wallet_account = Keypair::new();
     let assistant_account = Keypair::new();
+
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&program_id);
 
     utils::init_wallet(
         &mut banks_client,
@@ -51,6 +52,7 @@ async fn init_wallet() {
         recent_blockhash,
         &program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: approvals_required_for_config.clone(),
@@ -63,7 +65,7 @@ async fn init_wallet() {
     .unwrap();
 
     assert_eq!(
-        get_wallet(&mut banks_client, &wallet_account.pubkey()).await,
+        get_wallet(&mut banks_client, &wallet_account).await,
         Wallet {
             is_initialized: true,
             signers: Signers::from_vec(signers),
@@ -80,6 +82,7 @@ async fn init_wallet() {
             balance_accounts: BalanceAccounts::new(),
             config_policy_update_locked: false,
             dapp_book: DAppBook::from_vec(vec![]),
+            rent_return_address: payer.pubkey(),
         }
     );
 }
@@ -88,9 +91,9 @@ async fn init_wallet() {
 async fn invalid_wallet_initialization() {
     let program_id = Keypair::new().pubkey();
     let mut pt = ProgramTest::new("strike_wallet", program_id, processor!(Processor::process));
-    pt.set_bpf_compute_max_units(40_000);
+    pt.set_compute_max_units(40_000);
     let (mut banks_client, payer, recent_blockhash) = pt.start().await;
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -108,6 +111,7 @@ async fn invalid_wallet_initialization() {
             recent_blockhash,
             &program_id,
             &wallet_account,
+            bump_seed,
             &assistant_account,
             InitialWalletConfig {
                 approvals_required_for_config: 3,
@@ -119,7 +123,7 @@ async fn invalid_wallet_initialization() {
         .await
         .unwrap_err()
         .unwrap(),
-        TransactionError::InstructionError(1, Custom(WalletError::InvalidApproverCount as u32)),
+        TransactionError::InstructionError(0, Custom(WalletError::InvalidApproverCount as u32)),
     );
 
     // verify it's not allowed to add a config approver that is not configured as signer
@@ -130,6 +134,7 @@ async fn invalid_wallet_initialization() {
             recent_blockhash,
             &program_id,
             &wallet_account,
+            bump_seed,
             &assistant_account,
             InitialWalletConfig {
                 approvals_required_for_config: 1,
@@ -141,6 +146,6 @@ async fn invalid_wallet_initialization() {
         .await
         .unwrap_err()
         .unwrap(),
-        TransactionError::InstructionError(1, Custom(WalletError::UnknownSigner as u32)),
+        TransactionError::InstructionError(0, Custom(WalletError::UnknownSigner as u32)),
     );
 }

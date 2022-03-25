@@ -27,7 +27,8 @@ use strike_wallet::{
 /// Keypairs and other data generated and used by test setup logic.
 struct Fixtures {
     assistant_keypair: Keypair,
-    wallet_keypair: Keypair,
+    wallet_account: Pubkey,
+    wallet_account_bump_seed: u8,
     signer_keypairs: Vec<Keypair>,
     balance_account_guid_hashes: Vec<BalanceAccountGuidHash>,
     token_mint_address: Pubkey,
@@ -40,7 +41,8 @@ struct Fixtures {
 /// the given BalanceAccounts, effectively enabling the SPL token for it.
 async fn enable_spl_token(
     context: &mut TestContext,
-    wallet_keypair: &Keypair,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     assistant_keypair: &Keypair,
     approver_keypairs: &Vec<Keypair>,
     token_mint_address: &Pubkey,
@@ -68,7 +70,8 @@ async fn enable_spl_token(
             ),
             common::instructions::init_balance_account_enable_spl_token(
                 &context.program_id,
-                &wallet_keypair.pubkey(),
+                wallet_account,
+                wallet_account_bump_seed,
                 &multisig_op_keypair.pubkey(),
                 &assistant_keypair.pubkey(),
                 token_mint_address,
@@ -119,7 +122,8 @@ async fn enable_spl_token(
     if finalize {
         finalize_enable_spl_token(
             context,
-            wallet_keypair,
+            wallet_account,
+            wallet_account_bump_seed,
             &multisig_op_keypair,
             token_mint_address,
             balance_account_addresses,
@@ -168,7 +172,8 @@ pub async fn transfer_lamports(
 /// targetting the finalize method for tests.
 pub async fn finalize_enable_spl_token(
     context: &mut TestContext,
-    wallet_keypair: &Keypair,
+    wallet_account: &Pubkey,
+    wallet_account_bump_seed: u8,
     multisig_op_keypair: &Keypair,
     token_mint_address: &Pubkey,
     balance_account_addresses: &Vec<Pubkey>,
@@ -193,7 +198,8 @@ pub async fn finalize_enable_spl_token(
         &[
             common::instructions::finalize_balance_account_enable_spl_token(
                 &context.program_id,
-                &wallet_keypair.pubkey(),
+                &wallet_account,
+                wallet_account_bump_seed,
                 &multisig_op_keypair.pubkey(),
                 &context.payer.pubkey(),
                 token_mint_address,
@@ -234,12 +240,13 @@ pub async fn finalize_enable_spl_token(
 /// Create a wallet with several BalanceAccounts.
 async fn setup_handler_test(context: &mut TestContext, n_balance_accounts: u8) -> Fixtures {
     let assistant_keypair = Keypair::new();
-    let wallet_keypair = Keypair::new();
+    let (wallet_account, wallet_account_bump_seed) = wallet_account_and_seed(&context.program_id);
     let signer_keypairs = vec![Keypair::new(), Keypair::new()];
 
     create_wallet(
         context,
-        &wallet_keypair,
+        &wallet_account,
+        wallet_account_bump_seed,
         &assistant_keypair,
         &signer_keypairs,
     )
@@ -247,7 +254,8 @@ async fn setup_handler_test(context: &mut TestContext, n_balance_accounts: u8) -
 
     let balance_account_guid_hashes = create_balance_accounts(
         context,
-        &wallet_keypair.pubkey(),
+        &wallet_account,
+        wallet_account_bump_seed,
         &assistant_keypair,
         &signer_keypairs,
         n_balance_accounts,
@@ -270,7 +278,8 @@ async fn setup_handler_test(context: &mut TestContext, n_balance_accounts: u8) -
 
     Fixtures {
         assistant_keypair,
-        wallet_keypair,
+        wallet_account,
+        wallet_account_bump_seed,
         signer_keypairs,
         balance_account_guid_hashes,
         token_mint_address,
@@ -287,7 +296,8 @@ async fn test_enable_spl_token_happy_path() {
 
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -313,7 +323,8 @@ async fn test_enable_spl_token_with_bad_payer_balance_account_hash() {
 
     enable_spl_token(
         &mut context,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -339,7 +350,8 @@ async fn test_enable_spl_token_with_invalid_token_mint() {
 
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &invalid_token_mint_address,
@@ -367,7 +379,8 @@ async fn test_enable_spl_token_with_empty_guid_hash_vec() {
     // send 6 guid hashes, verifying the the limit is 5.
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -392,7 +405,8 @@ async fn test_enable_spl_token_with_too_many_guid_hashes() {
     // max value defined in balance_account_enable_spl_token_handler.
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -420,7 +434,8 @@ async fn test_enable_spl_token_with_invalid_guid_hash() {
 
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -447,7 +462,8 @@ async fn test_enable_spl_token_with_insufficient_account_keys_in_finalize() {
 
     enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -470,7 +486,8 @@ async fn test_enable_spl_token_with_invalid_balance_account_address_in_finalize(
 
     let multisig_op_keypair = enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &fixtures.assistant_keypair,
         &fixtures.signer_keypairs,
         &fixtures.token_mint_address,
@@ -486,7 +503,8 @@ async fn test_enable_spl_token_with_invalid_balance_account_address_in_finalize(
 
     finalize_enable_spl_token(
         &mut ctx,
-        &fixtures.wallet_keypair,
+        &fixtures.wallet_account,
+        fixtures.wallet_account_bump_seed,
         &multisig_op_keypair,
         &fixtures.token_mint_address,
         &fixtures.balance_account_addresses,

@@ -3,7 +3,7 @@ use crate::error::WalletError;
 use crate::handlers::utils::{
     create_associated_token_account_instruction, finalize_multisig_op, get_clock_from_next_account,
     next_program_account_info, start_multisig_transfer_op, transfer_sol_checked,
-    validate_balance_account_and_get_seed,
+    validate_balance_account_and_get_seed, validate_wallet_account,
 };
 use crate::model::address_book::AddressBookEntryNameHash;
 use crate::model::balance_account::BalanceAccountGuidHash;
@@ -27,6 +27,7 @@ use spl_token::state::Account as SPLAccount;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     destination_name_hash: &AddressBookEntryNameHash,
@@ -41,6 +42,12 @@ pub fn init(
     let token_mint = next_account_info(accounts_iter)?;
     let destination_token_account = next_account_info(accounts_iter)?;
     let fee_payer_account = next_account_info(accounts_iter)?;
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
     let balance_account = wallet.get_balance_account(account_guid_hash)?;
@@ -125,6 +132,7 @@ pub fn init(
 pub fn finalize(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     token_mint: Pubkey,
@@ -143,6 +151,12 @@ pub fn finalize(
     if system_program_account.key != &system_program::id() {
         return Err(WalletError::AccountNotRecognized.into());
     }
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     finalize_multisig_op(
         &multisig_op_account_info,

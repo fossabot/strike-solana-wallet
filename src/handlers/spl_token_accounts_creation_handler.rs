@@ -1,3 +1,4 @@
+use crate::handlers::utils::validate_wallet_account;
 use crate::{
     error::WalletError,
     handlers::utils::{
@@ -33,6 +34,7 @@ pub const MAX_BALANCE_ACCOUNT_GUID_HASHES: usize = 5;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     payer_account_guid_hash: &BalanceAccountGuidHash,
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> ProgramResult {
@@ -43,6 +45,12 @@ pub fn init(
     let initiator_account_info = next_account_info(accounts_iter)?;
     let token_mint_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     let wallet: Wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
 
@@ -118,6 +126,7 @@ pub fn init(
 pub fn finalize(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    wallet_account_bump_seed: u8,
     payer_account_guid_hash: &BalanceAccountGuidHash,
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> ProgramResult {
@@ -137,6 +146,12 @@ pub fn finalize(
     let _spl_associated_token_account_info = next_account_info(accounts_iter)?;
     let spl_token_program_account_info = next_account_info(accounts_iter)?;
     let rent_account_info = next_account_info(accounts_iter)?;
+
+    validate_wallet_account(
+        wallet_account_info.key,
+        wallet_account_bump_seed,
+        program_id,
+    )?;
 
     if *system_program_account_info.key != system_program::id() {
         msg!("Instruction expected system program account");

@@ -20,7 +20,7 @@ async fn test_dapp_book_update() {
     let started_at = SystemTime::now();
     let mut context = setup_test(40_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new()];
@@ -35,6 +35,7 @@ async fn test_dapp_book_update() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 1,
@@ -63,7 +64,8 @@ async fn test_dapp_book_update() {
 
     let multisig_op_account = utils::init_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[1],
         add_dapp.clone(),
     )
@@ -81,12 +83,12 @@ async fn test_dapp_book_update() {
         }],
         OperationDisposition::NONE,
         &MultisigOpParams::UpdateDAppBook {
-            wallet_address: wallet_account.pubkey(),
+            wallet_address: wallet_account,
             update: add_dapp.clone(),
         },
     );
 
-    let wallet = get_wallet(&mut context.banks_client, &wallet_account.pubkey()).await;
+    let wallet = get_wallet(&mut context.banks_client, &wallet_account).await;
     // ensure that config policy updates are not locked
     assert!(!wallet.config_policy_update_locked);
 
@@ -94,7 +96,8 @@ async fn test_dapp_book_update() {
 
     utils::finalize_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         multisig_op_account,
         add_dapp.clone(),
     )
@@ -102,7 +105,7 @@ async fn test_dapp_book_update() {
 
     assert_eq!(
         Slots::from_vec(vec![dapp_slot]),
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey())
+        get_wallet(&mut context.banks_client, &wallet_account)
             .await
             .dapp_book
     );
@@ -115,7 +118,8 @@ async fn test_dapp_book_update() {
 
     let remove_multisig_op_account = utils::init_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[0],
         remove_dapp.clone(),
     )
@@ -133,14 +137,15 @@ async fn test_dapp_book_update() {
         }],
         OperationDisposition::APPROVED,
         &MultisigOpParams::UpdateDAppBook {
-            wallet_address: wallet_account.pubkey(),
+            wallet_address: wallet_account,
             update: remove_dapp.clone(),
         },
     );
 
     utils::finalize_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         remove_multisig_op_account,
         remove_dapp.clone(),
     )
@@ -148,7 +153,7 @@ async fn test_dapp_book_update() {
 
     assert_eq!(
         Slots::new(),
-        get_wallet(&mut context.banks_client, &wallet_account.pubkey())
+        get_wallet(&mut context.banks_client, &wallet_account)
             .await
             .dapp_book
     );
@@ -158,7 +163,7 @@ async fn test_dapp_book_update() {
 async fn test_dapp_book_update_initiator_approval() {
     let mut context = setup_test(30_000).await;
 
-    let wallet_account = Keypair::new();
+    let (wallet_account, bump_seed) = wallet_account_and_seed(&context.program_id);
     let assistant_account = Keypair::new();
 
     let approvers = vec![Keypair::new(), Keypair::new(), Keypair::new()];
@@ -174,6 +179,7 @@ async fn test_dapp_book_update_initiator_approval() {
         context.recent_blockhash,
         &context.program_id,
         &wallet_account,
+        bump_seed,
         &assistant_account,
         InitialWalletConfig {
             approvals_required_for_config: 2,
@@ -191,7 +197,8 @@ async fn test_dapp_book_update_initiator_approval() {
 
     let multisig_op_account = utils::init_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[2],
         DAppBookUpdate {
             add_dapps: vec![(
@@ -225,7 +232,8 @@ async fn test_dapp_book_update_initiator_approval() {
 
     let multisig_op_account = utils::init_dapp_book_update(
         &mut context,
-        wallet_account.pubkey(),
+        wallet_account,
+        bump_seed,
         &approvers[0],
         DAppBookUpdate {
             add_dapps: vec![(
