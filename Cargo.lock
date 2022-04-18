@@ -5075,6 +5075,7 @@ dependencies = [
  "assert_matches",
  "bitvec",
  "bytes",
+ "futures 0.3.21",
  "itertools",
  "sha2 0.10.2",
  "solana-program",
