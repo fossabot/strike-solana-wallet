@@ -655,8 +655,8 @@ impl Wallet {
     ) -> ProgramResult {
         let mut bytes: Vec<u8> = Vec::new();
         for id in signer_slots {
-            if self.signers[*id] != None {
-                bytes.extend_from_slice(self.signers[*id].unwrap().key.as_ref());
+            if let Some(signer) = self.signers[*id] {
+                bytes.extend_from_slice(signer.key.as_ref());
             } else {
                 return Err(WalletError::UnknownSigner.into());
             }

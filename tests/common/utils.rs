@@ -2312,7 +2312,7 @@ pub fn random_balance_account_guid_hash() -> BalanceAccountGuidHash {
     BalanceAccountGuidHash::new(&Pubkey::new_unique().to_bytes())
 }
 
-/// Hash array of signer keys
+/// Hash vector of signer keys
 pub fn hash_signers(signers: &Vec<Signer>) -> Hash {
     let mut bytes: Vec<u8> = Vec::new();
     for signer in signers {
