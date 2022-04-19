@@ -4,7 +4,6 @@ use crate::model::wallet::Wallet;
 use crate::version::{Versioned, VERSION};
 use solana_program::account_info::{next_account_info, AccountInfo};
 use solana_program::entrypoint::ProgramResult;
-use solana_program::msg;
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
@@ -45,7 +44,6 @@ pub fn handle(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let rent_return_account_info = next_account_info(accounts_iter)?;
 
     let source_version = Wallet::version_from_slice(&source_account_info.data.borrow())?;
-    msg!("source version: {:}", source_version);
     if source_version == VERSION {
         return Err(WalletError::AccountVersionMismatch.into());
     }

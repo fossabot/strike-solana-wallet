@@ -9,7 +9,7 @@ use solana_program::instruction::InstructionError;
 use solana_program::instruction::InstructionError::Custom;
 use solana_program::program_pack::Pack;
 use solana_program::system_instruction;
-use solana_program_test::{find_file, processor, read_file, ProgramTestContext};
+use solana_program_test::{find_file, processor, read_file, BanksClientError, ProgramTestContext};
 use solana_sdk::account::{AccountSharedData, ReadableAccount, WritableAccount};
 use solana_sdk::transaction::{Transaction, TransactionError};
 
@@ -250,28 +250,21 @@ async fn test_migrate_errors() {
         .await
         .unwrap();
 
+    let blockhash = pt_context.last_blockhash;
     // cannot call migrate from the current version
     assert_eq!(
-        pt_context
-            .banks_client
-            .process_transaction(Transaction::new_signed_with_payer(
-                &[instructions::migrate_account(
-                    &program_id,
-                    &wallet_account.pubkey(),
-                    &destination_wallet_account.pubkey(),
-                    &pt_context.payer.pubkey(),
-                )],
-                Some(&pt_context.payer.pubkey()),
-                &[&pt_context.payer],
-                pt_context.last_blockhash,
-            ))
-            .await
-            .unwrap_err()
-            .unwrap(),
+        process_migrate_account_transaction(
+            &mut pt_context,
+            &program_id,
+            &wallet_account,
+            &destination_wallet_account,
+            blockhash
+        )
+        .await
+        .unwrap_err()
+        .unwrap(),
         TransactionError::InstructionError(0, Custom(WalletError::AccountVersionMismatch as u32)),
     );
-
-    let latest_blockhash = advance_blockhash(&mut pt_context).await;
 
     // alter the version of the source account so it is not the current version, but an unknown version
     let mut wallet_account_shared_data = AccountSharedData::from(
@@ -287,23 +280,19 @@ async fn test_migrate_errors() {
     wallet.pack_into_slice(wallet_account_shared_data.data_as_mut_slice());
     pt_context.set_account(&wallet_account.pubkey(), &wallet_account_shared_data);
 
+    // we need a fresh blockhash so the transaction executes again
+    let blockhash = wait_for_new_blockhash(&mut pt_context).await;
     assert_eq!(
-        pt_context
-            .banks_client
-            .process_transaction(Transaction::new_signed_with_payer(
-                &[instructions::migrate_account(
-                    &program_id,
-                    &wallet_account.pubkey(),
-                    &destination_wallet_account.pubkey(),
-                    &pt_context.payer.pubkey(),
-                )],
-                Some(&pt_context.payer.pubkey()),
-                &[&pt_context.payer],
-                latest_blockhash,
-            ))
-            .await
-            .unwrap_err()
-            .unwrap(),
+        process_migrate_account_transaction(
+            &mut pt_context,
+            &program_id,
+            &wallet_account,
+            &destination_wallet_account,
+            blockhash
+        )
+        .await
+        .unwrap_err()
+        .unwrap(),
         TransactionError::InstructionError(0, Custom(WalletError::UnknownVersion as u32)),
     );
 
@@ -322,30 +311,24 @@ async fn test_migrate_errors() {
         &destination_wallet_account_shared_data,
     );
 
-    let latest_blockhash = advance_blockhash(&mut pt_context).await;
-
+    // we need a fresh blockhash so the transaction executes again
+    let blockhash = wait_for_new_blockhash(&mut pt_context).await;
     assert_eq!(
-        pt_context
-            .banks_client
-            .process_transaction(Transaction::new_signed_with_payer(
-                &[instructions::migrate_account(
-                    &program_id,
-                    &wallet_account.pubkey(),
-                    &destination_wallet_account.pubkey(),
-                    &pt_context.payer.pubkey(),
-                )],
-                Some(&pt_context.payer.pubkey()),
-                &[&pt_context.payer],
-                latest_blockhash,
-            ))
-            .await
-            .unwrap_err()
-            .unwrap(),
+        process_migrate_account_transaction(
+            &mut pt_context,
+            &program_id,
+            &wallet_account,
+            &destination_wallet_account,
+            blockhash
+        )
+        .await
+        .unwrap_err()
+        .unwrap(),
         TransactionError::InstructionError(0, InstructionError::AccountAlreadyInitialized)
     );
 }
 
-async fn advance_blockhash(pt_context: &mut ProgramTestContext) -> Hash {
+async fn wait_for_new_blockhash(pt_context: &mut ProgramTestContext) -> Hash {
     let last_blockhash = pt_context
         .banks_client
         .get_latest_blockhash()
@@ -365,4 +348,27 @@ async fn advance_blockhash(pt_context: &mut ProgramTestContext) -> Hash {
         .get_latest_blockhash()
         .await
         .unwrap()
+}
+
+async fn process_migrate_account_transaction(
+    pt_context: &mut ProgramTestContext,
+    program_id: &Pubkey,
+    wallet_account: &Keypair,
+    destination_wallet_account: &Keypair,
+    blockhash: Hash,
+) -> Result<(), BanksClientError> {
+    pt_context
+        .banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[instructions::migrate_account(
+                program_id,
+                &wallet_account.pubkey(),
+                &destination_wallet_account.pubkey(),
+                &pt_context.payer.pubkey(),
+            )],
+            Some(&pt_context.payer.pubkey()),
+            &[&pt_context.payer],
+            blockhash,
+        ))
+        .await
 }
