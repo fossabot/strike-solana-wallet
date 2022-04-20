@@ -1,3 +1,4 @@
+use crate::constants::HASH_LEN;
 use crate::error::WalletError;
 use crate::instruction::{
     AddressBookUpdate, BalanceAccountCreation, BalanceAccountPolicyUpdate, DAppBookUpdate,
@@ -28,11 +29,29 @@ pub type Signers = Slots<Signer, { Wallet::MAX_SIGNERS }>;
 pub type Approvers = SlotFlags<Signer, { Signers::FLAGS_STORAGE_SIZE }>;
 pub type BalanceAccounts = Slots<BalanceAccount, { Wallet::MAX_BALANCE_ACCOUNTS }>;
 
+#[derive(Debug, Clone, Eq, PartialEq, Copy, Ord, PartialOrd)]
+pub struct WalletGuidHash([u8; HASH_LEN]);
+
+impl WalletGuidHash {
+    pub fn new(bytes: &[u8; HASH_LEN]) -> Self {
+        Self(*bytes)
+    }
+
+    pub fn zero() -> Self {
+        Self::new(&[0; HASH_LEN])
+    }
+
+    pub fn to_bytes(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Wallet {
     pub is_initialized: bool,
     pub version: u32,
     pub rent_return: Pubkey,
+    pub wallet_guid_hash: WalletGuidHash,
     pub signers: Signers,
     pub assistant: Signer,
     pub address_book: AddressBook,
@@ -384,8 +403,13 @@ impl Wallet {
         self.balance_accounts
             .insert(creation_params.slot_id, balance_account);
 
-        let (source_account_pda, _) =
-            Pubkey::find_program_address(&[&account_guid_hash.to_bytes()], program_id);
+        let (source_account_pda, _) = Pubkey::find_program_address(
+            &[
+                self.wallet_guid_hash.to_bytes(),
+                account_guid_hash.to_bytes(),
+            ],
+            program_id,
+        );
 
         self.add_address_book_entries(&vec![(
             creation_params.address_book_slot_id,
@@ -653,15 +677,28 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn get_is_initialized(src: &[u8]) -> bool {
+    pub fn is_initialized_from_slice(src: &[u8]) -> bool {
         return src.len() > 0 && src[0] == 1;
     }
 
-    pub fn get_rent_return(src: &[u8]) -> Result<Pubkey, ProgramError> {
+    pub fn rent_return_from_slice(src: &[u8]) -> Result<Pubkey, ProgramError> {
         if src.len() >= 1 + 4 + PUBKEY_BYTES {
             if src[0] == 1 {
                 let buf = array_ref!(src, 5, PUBKEY_BYTES);
                 Ok(Pubkey::new_from_array(*buf))
+            } else {
+                Err(ProgramError::UninitializedAccount)
+            }
+        } else {
+            Err(ProgramError::InvalidAccountData)
+        }
+    }
+
+    pub fn wallet_guid_hash_from_slice(src: &[u8]) -> Result<WalletGuidHash, ProgramError> {
+        if src.len() >= 1 + 4 + PUBKEY_BYTES + HASH_LEN {
+            if src[0] == 1 {
+                let buf = array_ref!(src, 1 + 4 + PUBKEY_BYTES, HASH_LEN);
+                Ok(WalletGuidHash::new(buf))
             } else {
                 Err(ProgramError::UninitializedAccount)
             }
@@ -742,6 +779,7 @@ impl Pack for Wallet {
     const LEN: usize = 1 + // is_initialized
         4 + // version
         PUBKEY_BYTES + // rent return
+        HASH_LEN + // wallet guid hash
         Signers::LEN +
         Signer::LEN + // assistant
         AddressBook::LEN +
@@ -757,6 +795,7 @@ impl Pack for Wallet {
             is_initialized_dst,
             version_dst,
             rent_return_dst,
+            wallet_guid_hash_dst,
             signers_dst,
             assistant_account_dst,
             address_book_dst,
@@ -770,6 +809,7 @@ impl Pack for Wallet {
             1,
             4,
             PUBKEY_BYTES,
+            HASH_LEN,
             Signers::LEN,
             Signer::LEN,
             AddressBook::LEN,
@@ -783,6 +823,7 @@ impl Pack for Wallet {
         is_initialized_dst[0] = self.is_initialized as u8;
         *version_dst = self.version.to_le_bytes();
         rent_return_dst.copy_from_slice(self.rent_return.as_ref());
+        wallet_guid_hash_dst.copy_from_slice(&self.wallet_guid_hash.0);
         self.signers.pack_into_slice(signers_dst);
         self.assistant.pack_into_slice(assistant_account_dst);
         self.address_book.pack_into_slice(address_book_dst);
@@ -799,6 +840,7 @@ impl Pack for Wallet {
             is_initialized,
             version,
             rent_return,
+            wallet_guid_hash,
             signers_src,
             assistant,
             address_book_src,
@@ -812,6 +854,7 @@ impl Pack for Wallet {
             1,
             4,
             PUBKEY_BYTES,
+            HASH_LEN,
             Signers::LEN,
             Signer::LEN,
             AddressBook::LEN,
@@ -830,6 +873,7 @@ impl Pack for Wallet {
             },
             version: u32::from_le_bytes(*version),
             rent_return: Pubkey::new_from_array(*rent_return),
+            wallet_guid_hash: WalletGuidHash::new(wallet_guid_hash),
             signers: Signers::unpack_from_slice(signers_src)?,
             assistant: Signer::unpack_from_slice(assistant)?,
             address_book: AddressBook::unpack_from_slice(address_book_src)?,
