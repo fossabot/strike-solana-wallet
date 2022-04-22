@@ -1,4 +1,4 @@
-use crate::constants::HASH_LEN;
+use crate::constants::{HASH_LEN, VERSION_LEN};
 use crate::error::WalletError;
 use crate::instruction::{
     AddressBookUpdate, BalanceAccountCreation, BalanceAccountPolicyUpdate, DAppBookUpdate,
@@ -682,9 +682,9 @@ impl Wallet {
     }
 
     pub fn rent_return_from_slice(src: &[u8]) -> Result<Pubkey, ProgramError> {
-        if src.len() >= 1 + 4 + PUBKEY_BYTES {
+        if src.len() >= 1 + VERSION_LEN + PUBKEY_BYTES {
             if src[0] == 1 {
-                let buf = array_ref!(src, 5, PUBKEY_BYTES);
+                let buf = array_ref!(src, 1 + VERSION_LEN, PUBKEY_BYTES);
                 Ok(Pubkey::new_from_array(*buf))
             } else {
                 Err(ProgramError::UninitializedAccount)
@@ -695,9 +695,9 @@ impl Wallet {
     }
 
     pub fn wallet_guid_hash_from_slice(src: &[u8]) -> Result<WalletGuidHash, ProgramError> {
-        if src.len() >= 1 + 4 + PUBKEY_BYTES + HASH_LEN {
+        if src.len() >= 1 + VERSION_LEN + PUBKEY_BYTES + HASH_LEN {
             if src[0] == 1 {
-                let buf = array_ref!(src, 1 + 4 + PUBKEY_BYTES, HASH_LEN);
+                let buf = array_ref!(src, 1 + VERSION_LEN + PUBKEY_BYTES, HASH_LEN);
                 Ok(WalletGuidHash::new(buf))
             } else {
                 Err(ProgramError::UninitializedAccount)
@@ -762,9 +762,9 @@ impl Wallet {
 
 impl Versioned for Wallet {
     fn version_from_slice(src: &[u8]) -> Result<u32, ProgramError> {
-        if src.len() >= 5 {
+        if src.len() >= 1 + VERSION_LEN {
             if src[0] == 1 {
-                let buf = array_ref!(src, 1, 4);
+                let buf = array_ref!(src, 1, VERSION_LEN);
                 Ok(u32::from_le_bytes(*buf))
             } else {
                 Err(ProgramError::UninitializedAccount)
@@ -777,7 +777,7 @@ impl Versioned for Wallet {
 
 impl Pack for Wallet {
     const LEN: usize = 1 + // is_initialized
-        4 + // version
+        VERSION_LEN + // version
         PUBKEY_BYTES + // rent return
         HASH_LEN + // wallet guid hash
         Signers::LEN +
@@ -807,7 +807,7 @@ impl Pack for Wallet {
         ) = mut_array_refs![
             dst,
             1,
-            4,
+            VERSION_LEN,
             PUBKEY_BYTES,
             HASH_LEN,
             Signers::LEN,
@@ -852,7 +852,7 @@ impl Pack for Wallet {
         ) = array_refs![
             src,
             1,
-            4,
+            VERSION_LEN,
             PUBKEY_BYTES,
             HASH_LEN,
             Signers::LEN,
