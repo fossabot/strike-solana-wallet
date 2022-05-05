@@ -861,7 +861,7 @@ impl MultisigOpParams {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 Self::hash_balance_account_update_op(
-                    MultisigOpCode::UpdateBalanceAccountPolicy.into(),
+                    MultisigOpCode::UpdateAddressBookWhitelist.into(),
                     wallet_address,
                     account_guid_hash,
                     update_bytes,
