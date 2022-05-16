@@ -58,12 +58,14 @@ fn init_multisig_op(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     program_instruction: ProgramInstruction,
 ) -> Instruction {
     let mut accounts = vec![AccountMeta::new(*multisig_op_account, false)];
     accounts.push(AccountMeta::new_readonly(*wallet_account, false));
     accounts.push(AccountMeta::new_readonly(*initiator_account, true));
     accounts.push(AccountMeta::new_readonly(sysvar::clock::id(), false));
+    accounts.push(AccountMeta::new_readonly(*rent_return_account, true));
 
     Instruction {
         program_id: *program_id,
@@ -104,6 +106,7 @@ pub fn init_balance_account_creation_instruction(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     slot_id: SlotId<BalanceAccount>,
     account_guid_hash: BalanceAccountGuidHash,
     name_hash: BalanceAccountNameHash,
@@ -120,6 +123,7 @@ pub fn init_balance_account_creation_instruction(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitBalanceAccountCreation {
             account_guid_hash,
             creation_params: BalanceAccountCreation {
@@ -141,7 +145,7 @@ pub fn finalize_balance_account_creation(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     creation_params: BalanceAccountCreation,
 ) -> Instruction {
@@ -154,7 +158,7 @@ pub fn finalize_balance_account_creation(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -170,6 +174,7 @@ pub fn init_dapp_book_update(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     update: DAppBookUpdate,
 ) -> Instruction {
     init_multisig_op(
@@ -177,6 +182,7 @@ pub fn init_dapp_book_update(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitDAppBookUpdate { update },
     )
 }
@@ -185,7 +191,7 @@ pub fn finalize_dapp_book_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     update: DAppBookUpdate,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeDAppBookUpdate { update }
@@ -194,7 +200,7 @@ pub fn finalize_dapp_book_update(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -210,6 +216,7 @@ pub fn init_balance_account_policy_update_instruction(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     update: BalanceAccountPolicyUpdate,
 ) -> Instruction {
@@ -220,6 +227,7 @@ pub fn init_balance_account_policy_update_instruction(
             AccountMeta::new(*wallet_account, false),
             AccountMeta::new_readonly(*initiator_account, true),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(*rent_return_account, true),
         ],
         data: ProgramInstruction::InitBalanceAccountPolicyUpdate {
             account_guid_hash,
@@ -234,14 +242,14 @@ pub fn finalize_balance_account_policy_update_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     update: BalanceAccountPolicyUpdate,
 ) -> Instruction {
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -288,9 +296,9 @@ pub fn init_transfer(
         AccountMeta::new_readonly(*destination_account, false),
         AccountMeta::new_readonly(*initiator_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
+        AccountMeta::new(*fee_payer, true),
         AccountMeta::new_readonly(*token_mint, false),
         AccountMeta::new(destination_token_account, false),
-        AccountMeta::new(*fee_payer, true),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
@@ -310,7 +318,7 @@ pub fn finalize_transfer(
     wallet_account: &Pubkey,
     source_account: &Pubkey,
     destination_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     amount: u64,
     token_mint: &Pubkey,
@@ -329,7 +337,7 @@ pub fn finalize_transfer(
         AccountMeta::new(*source_account, false),
         AccountMeta::new(*destination_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
     if *token_mint != system_program::id() {
@@ -365,6 +373,7 @@ pub fn init_wrap_unwrap(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     balance_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
@@ -391,6 +400,7 @@ pub fn init_wrap_unwrap(
         AccountMeta::new_readonly(spl_token::native_mint::id(), false),
         AccountMeta::new_readonly(*initiator_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
+        AccountMeta::new_readonly(*rent_return_account, true),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
@@ -409,7 +419,7 @@ pub fn finalize_wrap_unwrap(
     multisig_op_account: &Pubkey,
     wallet_account: &Pubkey,
     balance_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     direction: WrapDirection,
@@ -432,7 +442,7 @@ pub fn finalize_wrap_unwrap(
         AccountMeta::new_readonly(*wallet_account, false),
         AccountMeta::new(*balance_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
         AccountMeta::new(wrapped_sol_account, false),
         AccountMeta::new_readonly(spl_token::id(), false),
@@ -450,6 +460,7 @@ pub fn init_update_signer(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     slot_update_type: SlotUpdateType,
     slot_id: SlotId<Signer>,
     signer: Signer,
@@ -459,6 +470,7 @@ pub fn init_update_signer(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitUpdateSigner {
             slot_update_type,
             slot_id,
@@ -471,7 +483,7 @@ pub fn finalize_update_signer(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     slot_update_type: SlotUpdateType,
     slot_id: SlotId<Signer>,
     signer: Signer,
@@ -487,7 +499,7 @@ pub fn finalize_update_signer(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -503,6 +515,7 @@ pub fn init_wallet_config_policy_update_instruction(
     wallet_account: Pubkey,
     multisig_op_account: Pubkey,
     initiator_account: Pubkey,
+    rent_return_account: Pubkey,
     update: &WalletConfigPolicyUpdate,
 ) -> Instruction {
     Instruction {
@@ -512,6 +525,7 @@ pub fn init_wallet_config_policy_update_instruction(
             AccountMeta::new(wallet_account, false),
             AccountMeta::new_readonly(initiator_account, true),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(rent_return_account, true),
         ],
         data: ProgramInstruction::InitWalletConfigPolicyUpdate {
             update: update.clone(),
@@ -525,7 +539,7 @@ pub fn finalize_wallet_config_policy_update_instruction(
     program_id: Pubkey,
     wallet_account: Pubkey,
     multisig_op_account: Pubkey,
-    rent_collector_account: Pubkey,
+    rent_return_account: Pubkey,
     update: &WalletConfigPolicyUpdate,
 ) -> Instruction {
     Instruction {
@@ -533,7 +547,7 @@ pub fn finalize_wallet_config_policy_update_instruction(
         accounts: vec![
             AccountMeta::new(multisig_op_account, false),
             AccountMeta::new(wallet_account, false),
-            AccountMeta::new_readonly(rent_collector_account, true),
+            AccountMeta::new(rent_return_account, true),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: ProgramInstruction::FinalizeWalletConfigPolicyUpdate {
@@ -550,6 +564,7 @@ pub fn init_dapp_transaction(
     multisig_op_account: &Pubkey,
     multisig_data_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
     instruction_count: u8,
@@ -568,6 +583,7 @@ pub fn init_dapp_transaction(
         AccountMeta::new_readonly(*wallet_account, false),
         AccountMeta::new_readonly(*initiator_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
+        AccountMeta::new_readonly(*rent_return_account, true),
     ];
 
     Instruction {
@@ -606,7 +622,7 @@ pub fn finalize_dapp_transaction(
     multisig_op_account: &Pubkey,
     multisig_data_account: &Pubkey,
     balance_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
     params_hash: &Hash,
     instructions: &Vec<Instruction>,
@@ -624,7 +640,7 @@ pub fn finalize_dapp_transaction(
         AccountMeta::new(*multisig_data_account, false),
         AccountMeta::new_readonly(*wallet_account, false),
         AccountMeta::new(*balance_account, false),
-        AccountMeta::new(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -635,7 +651,7 @@ pub fn finalize_dapp_transaction(
         *multisig_data_account,
         *wallet_account,
         *balance_account,
-        *rent_collector_account,
+        *rent_return_account,
         sysvar::clock::id(),
     ];
 
@@ -653,6 +669,7 @@ pub fn init_account_settings_update(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     whitelist_status: Option<BooleanSetting>,
     dapps_enabled: Option<BooleanSetting>,
@@ -662,6 +679,7 @@ pub fn init_account_settings_update(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitAccountSettingsUpdate {
             account_guid_hash,
             whitelist_enabled: whitelist_status,
@@ -674,7 +692,7 @@ pub fn finalize_account_settings_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     whitelist_status: Option<BooleanSetting>,
     dapps_enabled: Option<BooleanSetting>,
@@ -690,7 +708,7 @@ pub fn finalize_account_settings_update(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -706,6 +724,7 @@ pub fn init_balance_account_name_update(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     account_name_hash: BalanceAccountNameHash,
 ) -> Instruction {
@@ -714,6 +733,7 @@ pub fn init_balance_account_name_update(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitBalanceAccountNameUpdate {
             account_guid_hash,
             account_name_hash,
@@ -725,7 +745,7 @@ pub fn finalize_balance_account_name_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     account_name_hash: BalanceAccountNameHash,
 ) -> Instruction {
@@ -739,7 +759,7 @@ pub fn finalize_balance_account_name_update(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -755,6 +775,7 @@ pub fn init_address_book_update_instruction(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     add_address_book_entries: Vec<(SlotId<AddressBookEntry>, AddressBookEntry)>,
     remove_address_book_entries: Vec<(SlotId<AddressBookEntry>, AddressBookEntry)>,
     balance_account_whitelist_updates: Vec<BalanceAccountWhitelistUpdate>,
@@ -764,6 +785,7 @@ pub fn init_address_book_update_instruction(
         wallet_account,
         multisig_op_account,
         initiator_account,
+        rent_return_account,
         ProgramInstruction::InitAddressBookUpdate {
             update: AddressBookUpdate {
                 add_address_book_entries: add_address_book_entries.clone(),
@@ -778,7 +800,7 @@ pub fn finalize_address_book_update(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     update: AddressBookUpdate,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeAddressBookUpdate { update }
@@ -787,7 +809,7 @@ pub fn finalize_address_book_update(
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
@@ -802,7 +824,8 @@ pub fn init_balance_account_enable_spl_token(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    assistant_account: &Pubkey,
+    initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     token_mint_account: &Pubkey,
     associated_token_accounts: &Vec<Pubkey>,
     payer_account_guid_hash: &BalanceAccountGuidHash,
@@ -818,9 +841,10 @@ pub fn init_balance_account_enable_spl_token(
     let mut accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new(*assistant_account, true),
+        AccountMeta::new(*initiator_account, true),
         AccountMeta::new(*token_mint_account, false),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
+        AccountMeta::new_readonly(*rent_return_account, true),
     ];
 
     // append variable number of associated token accounts to array
@@ -842,7 +866,7 @@ pub fn finalize_balance_account_enable_spl_token(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     token_mint_account: &Pubkey,
     payer_balance_account: &Pubkey,
     balance_accounts: &Vec<Pubkey>,
@@ -860,7 +884,7 @@ pub fn finalize_balance_account_enable_spl_token(
     let mut accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new(*token_mint_account, false),
         AccountMeta::new(*payer_balance_account, false),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -939,6 +963,7 @@ pub fn init_balance_account_address_whitelist_update_instruction(
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
     initiator_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     update: BalanceAccountAddressWhitelistUpdate,
 ) -> Instruction {
@@ -949,6 +974,7 @@ pub fn init_balance_account_address_whitelist_update_instruction(
             AccountMeta::new(*wallet_account, false),
             AccountMeta::new_readonly(*initiator_account, true),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(*rent_return_account, true),
         ],
         data: ProgramInstruction::InitBalanceAccountAddressWhitelistUpdate {
             account_guid_hash,
@@ -963,14 +989,14 @@ pub fn finalize_balance_account_address_whitelist_update_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
     multisig_op_account: &Pubkey,
-    rent_collector_account: &Pubkey,
+    rent_return_account: &Pubkey,
     account_guid_hash: BalanceAccountGuidHash,
     update: BalanceAccountAddressWhitelistUpdate,
 ) -> Instruction {
     let accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new(*wallet_account, false),
-        AccountMeta::new_readonly(*rent_collector_account, true),
+        AccountMeta::new(*rent_return_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 

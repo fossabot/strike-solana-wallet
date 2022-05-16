@@ -68,6 +68,16 @@ pub fn get_clock_from_next_account(iter: &mut Iter<AccountInfo>) -> Result<Clock
     Clock::from_account_info(&account_info)
 }
 
+pub fn next_signer_account_info<'a, 'b, I: Iterator<Item = &'a AccountInfo<'b>>>(
+    iter: &mut I,
+) -> Result<I::Item, ProgramError> {
+    let account_info = next_account_info(iter)?;
+    if !account_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    Ok(account_info)
+}
+
 pub fn calculate_expires(start: i64, duration: Duration) -> Result<i64, ProgramError> {
     let expires_at = start.checked_add(duration.as_secs() as i64);
     if expires_at == None {
@@ -98,6 +108,7 @@ pub fn start_multisig_transfer_op(
     clock: Clock,
     params: MultisigOpParams,
     initiator: Pubkey,
+    rent_return: Pubkey,
 ) -> ProgramResult {
     let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
 
@@ -111,6 +122,9 @@ pub fn start_multisig_transfer_op(
             balance_account.approval_timeout_for_transfer,
         )?,
         Some(params),
+        rent_return,
+        0,
+        None,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 
@@ -123,6 +137,7 @@ pub fn start_multisig_config_op(
     clock: Clock,
     params: MultisigOpParams,
     initiator: Pubkey,
+    rent_return: Pubkey,
 ) -> ProgramResult {
     let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
 
@@ -133,6 +148,9 @@ pub fn start_multisig_config_op(
         clock.unix_timestamp,
         calculate_expires(clock.unix_timestamp, wallet.approval_timeout_for_config)?,
         Some(params),
+        rent_return,
+        0,
+        None,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 
@@ -145,7 +163,7 @@ pub fn log_op_disposition(disposition: OperationDisposition) {
 
 pub fn finalize_multisig_op<F>(
     multisig_op_account_info: &AccountInfo,
-    account_to_return_rent_to: &AccountInfo,
+    rent_return_account_info: &AccountInfo,
     clock: Clock,
     expected_params: MultisigOpParams,
     mut on_op_approved: F,
@@ -153,12 +171,12 @@ pub fn finalize_multisig_op<F>(
 where
     F: FnMut() -> ProgramResult,
 {
-    if !account_to_return_rent_to.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
     if MultisigOp::version_from_slice(&multisig_op_account_info.data.borrow())? == VERSION {
         let multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
+
+        if *rent_return_account_info.key != multisig_op.rent_return {
+            return Err(WalletError::IncorrectRentReturnAccount.into());
+        }
 
         if multisig_op.approved(expected_params.hash(), &clock, None)? {
             on_op_approved()?
@@ -167,7 +185,7 @@ where
         log_op_disposition(OperationDisposition::EXPIRED);
     }
 
-    collect_remaining_balance(&multisig_op_account_info, &account_to_return_rent_to)?;
+    collect_remaining_balance(&multisig_op_account_info, &rent_return_account_info)?;
 
     Ok(())
 }

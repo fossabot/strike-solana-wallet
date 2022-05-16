@@ -1,4 +1,4 @@
-use crate::handlers::utils::next_wallet_account_info;
+use crate::handlers::utils::{next_signer_account_info, next_wallet_account_info};
 use crate::{
     error::WalletError,
     handlers::utils::{
@@ -44,6 +44,7 @@ pub fn init(
     let initiator_account_info = next_account_info(accounts_iter)?;
     let token_mint_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
 
     let wallet: Wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
 
@@ -111,6 +112,7 @@ pub fn init(
             token_mint: *token_mint_account_info.key,
         },
         *initiator_account_info.key,
+        *rent_return_account_info.key,
     )?;
 
     Wallet::pack(wallet, &mut wallet_account_info.data.borrow_mut())?;
@@ -131,7 +133,7 @@ pub fn finalize(
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
     let wallet_account_info = next_wallet_account_info(accounts_iter, program_id)?;
-    let rent_collector_account_info = next_account_info(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let token_mint_account_info = next_account_info(accounts_iter)?;
     let payer_balance_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
@@ -242,7 +244,7 @@ pub fn finalize(
 
     finalize_multisig_op(
         &multisig_op_account_info,
-        &rent_collector_account_info,
+        &rent_return_account_info,
         clock,
         MultisigOpParams::CreateSPLTokenAccounts {
             wallet_address: *wallet_account_info.key,

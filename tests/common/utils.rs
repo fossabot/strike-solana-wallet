@@ -229,6 +229,7 @@ pub async fn init_wallet_config_policy_update(
         wallet_account,
         multisig_op_pubkey,
         initiator.pubkey(),
+        test_context.payer.pubkey(),
         update,
     );
 
@@ -409,6 +410,7 @@ pub async fn init_update_signer(
                 &context.wallet_account.pubkey(),
                 &multisig_op_pubkey,
                 &initiator_account.pubkey(),
+                &context.payer.pubkey(),
                 slot_update_type,
                 SlotId::new(slot_id),
                 signer,
@@ -489,6 +491,10 @@ pub async fn update_signer(
         }
         .hash()
     );
+    assert_eq!(multisig_op.initiator, approvers[0].pubkey());
+    assert_eq!(multisig_op.rent_return, context.payer.pubkey());
+    assert!(multisig_op.fee_account.is_none());
+    assert_eq!(multisig_op.fee_amount, 0);
 
     approve_or_deny_n_of_n_multisig_op(
         context.banks_client.borrow_mut(),
@@ -595,6 +601,7 @@ pub async fn account_settings_update(
                 &context.wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &context.approvers[0].pubkey(),
+                &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
                 whitelist_status,
                 dapps_enabled,
@@ -661,6 +668,10 @@ pub async fn account_settings_update(
         multisig_op.operation_disposition,
         OperationDisposition::NONE
     );
+    assert_eq!(multisig_op.initiator, context.approvers[0].pubkey());
+    assert_eq!(multisig_op.rent_return, context.pt_context.payer.pubkey());
+    assert!(multisig_op.fee_account.is_none());
+    assert_eq!(multisig_op.fee_amount, 0);
 
     assert_eq!(
         multisig_op.params_hash.unwrap(),
@@ -755,6 +766,7 @@ pub async fn init_dapp_book_update(
         &wallet_account,
         &multisig_op_pubkey,
         &initiator.pubkey(),
+        &test_context.payer.pubkey(),
         update,
     );
 
@@ -1068,6 +1080,7 @@ pub async fn init_balance_account_creation(
                 &context.wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
+                &context.payer.pubkey(),
                 creation_params.slot_id,
                 balance_account_guid_hash,
                 creation_params.name_hash,
@@ -1180,6 +1193,7 @@ pub async fn setup_balance_account_tests(
                 &wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &approvers[2].pubkey(),
+                &pt_context.payer.pubkey(),
                 SlotId::new(0),
                 balance_account_guid_hash,
                 balance_account_name_hash,
@@ -1239,6 +1253,10 @@ pub async fn setup_balance_account_tests(
     );
     assert_eq!(multisig_op.dispositions_required, 2);
     assert_eq!(multisig_op.version, VERSION);
+    assert_eq!(multisig_op.initiator, approvers[2].pubkey());
+    assert_eq!(multisig_op.rent_return, pt_context.payer.pubkey());
+    assert!(multisig_op.fee_account.is_none());
+    assert_eq!(multisig_op.fee_amount, 0);
 
     let expected_creation_params = BalanceAccountCreation {
         slot_id: SlotId::new(0),
@@ -1385,6 +1403,7 @@ pub async fn setup_create_balance_account_failure_tests(
                 &wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &assistant_account.pubkey(),
+                &payer.pubkey(),
                 SlotId::new(0),
                 balance_account_guid_hash,
                 balance_account_name_hash,
@@ -1604,6 +1623,7 @@ pub async fn init_address_book_update(
                 &context.wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
+                &context.pt_context.payer.pubkey(),
                 update.add_address_book_entries,
                 update.remove_address_book_entries,
                 update.balance_account_whitelist_updates,
@@ -1650,6 +1670,7 @@ pub async fn init_balance_account_address_whitelist_update(
                 &context.wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
+                &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
                 update,
             ),
@@ -1825,6 +1846,7 @@ pub async fn init_balance_account_name_hash_update(
                 &context.wallet_account.pubkey(),
                 &multisig_op_account.pubkey(),
                 &initiator_account.pubkey(),
+                &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
                 account_name_hash,
             ),
@@ -1928,6 +1950,7 @@ pub async fn init_balance_account_policy_update(
                 &context.wallet_account.pubkey(),
                 &multisig_op_pubkey,
                 &initiator_account.pubkey(),
+                &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
                 update.clone(),
             ),
@@ -2168,6 +2191,8 @@ pub fn assert_initialized_multisig_op(
     expected_dispositions: &Vec<ApprovalDispositionRecord>,
     expected_op_disposition: OperationDisposition,
     expected_params: &MultisigOpParams,
+    expected_initiator: &Pubkey,
+    rent_return: &Pubkey,
 ) {
     assert!(multisig_op.is_initialized);
     assert_multisig_op_timestamps(&multisig_op, initialized_at, expected_approval_timeout);
@@ -2181,6 +2206,10 @@ pub fn assert_initialized_multisig_op(
     );
     assert_eq!(multisig_op.operation_disposition, expected_op_disposition);
     assert_eq!(multisig_op.params_hash.unwrap(), expected_params.hash());
+    assert_eq!(multisig_op.initiator, *expected_initiator);
+    assert_eq!(multisig_op.rent_return, *rent_return);
+    assert!(multisig_op.fee_account.is_none());
+    assert_eq!(multisig_op.fee_amount, 0);
 }
 
 pub fn assert_multisig_op_dispositions(
@@ -2266,6 +2295,7 @@ pub async fn process_wrap(
                     &context.wallet_account.pubkey(),
                     &multisig_op_account.pubkey(),
                     &context.assistant_account.pubkey(),
+                    &context.pt_context.payer.pubkey(),
                     &balance_account,
                     &context.balance_account_guid_hash,
                     amount,
@@ -2359,6 +2389,7 @@ pub async fn process_unwrapping(
                     &context.wallet_account.pubkey(),
                     &unwrap_multisig_op_account.pubkey(),
                     &context.assistant_account.pubkey(),
+                    &context.pt_context.payer.pubkey(),
                     &balance_account,
                     &context.balance_account_guid_hash,
                     unwrap_amount,
@@ -2502,7 +2533,7 @@ pub fn get_associated_token_account_addresses(
         })
         .collect()
 }
-/// Create a wallet with a barebones config. no adressbook entries or dapps.
+/// Create a wallet with a bare-bones config. no addressbook entries or dapps.
 pub async fn create_wallet(
     context: &mut TestContext,
     wallet_keypair: &Keypair,
@@ -2634,6 +2665,7 @@ pub async fn create_balance_account(
                 &wallet_address,
                 &multisig_op_account.pubkey(),
                 &assistant_keypair.pubkey(),
+                &context.payer.pubkey(),
                 slot_id,
                 balance_account_guid_hash,
                 balance_account_name_hash,

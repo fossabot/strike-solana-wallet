@@ -76,6 +76,7 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitBalanceAccountCreation {
         account_guid_hash: BalanceAccountGuidHash,
         creation_params: BalanceAccountCreation,
@@ -83,7 +84,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     FinalizeBalanceAccountCreation {
         account_guid_hash: BalanceAccountGuidHash,
         creation_params: BalanceAccountCreation,
@@ -95,11 +96,10 @@ pub enum ProgramInstruction {
     /// 3. `[]` The destination account
     /// 4. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 5. `[]` The sysvar clock account
-    /// 6. `[]` The token mint (for SPL transfers, use system account otherwise)
-    /// 7. `[writable]` The destination token account (only used for SPL transfers)
-    /// 8. `[signer, writable]` The fee payer, used if we need to create destination token account
-    ///     for an SPL transfer and the source account does not have enough funds (only used for
-    ///     SPL transfers)
+    /// 6. `[signer, writable]` The rent return account, also used if we need to create destination
+    ///     token account for an SPL transfer and the source account does not have enough funds
+    /// 7. `[]` The token mint (for SPL transfers, use system account otherwise)
+    /// 8. `[writable]` The destination token account (only used for SPL transfers)
     /// 9. `[]` The system program (only used for SPL transfers)
     /// 10. `[]` The SPL token program (only used for SPL transfers)
     /// 11. `[]` The Rent sysvar program (only used for SPL transfers)
@@ -123,7 +123,7 @@ pub enum ProgramInstruction {
     /// 2. `[writable]` The source account
     /// 3. `[writable]` The destination account
     /// 4. `[]` The system program
-    /// 5. `[signer]` The rent collector account
+    /// 5. `[signer, writable]` The rent return account
     /// 6. `[]` The sysvar clock account
     /// 7. `[writable]` The source token account, if this is an SPL transfer
     /// 8. `[writable]` The destination token account, if this is an SPL transfer
@@ -142,10 +142,11 @@ pub enum ProgramInstruction {
     /// 4. `[]` The native mint account
     /// 5. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 6. `[]` The sysvar clock account
-    /// 7. `[]` The system program
-    /// 8. `[]` The SPL token program
-    /// 9. `[]` The Rent sysvar program
-    /// 10. `[]` The SPL associated token program
+    /// 7. `[signer]` The rent return account
+    /// 8. `[]` The system program
+    /// 9. `[]` The SPL token program
+    /// 10. `[]` The Rent sysvar program
+    /// 11. `[]` The SPL associated token program
     InitWrapUnwrap {
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,
@@ -156,7 +157,7 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[writable]` The balance account
     /// 3. `[]` The system program
-    /// 4. `[signer]` The rent collector account
+    /// 4. `[signer, writable]` The rent return account
     /// 5. `[]` The sysvar clock account
     /// 6. `[writable]` The wrapped SOL token account
     /// 7. `[]` The SPL token account
@@ -169,6 +170,7 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitUpdateSigner {
         slot_update_type: SlotUpdateType,
         slot_id: SlotId<Signer>,
@@ -177,7 +179,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     FinalizeUpdateSigner {
         slot_update_type: SlotUpdateType,
         slot_id: SlotId<Signer>,
@@ -188,11 +190,12 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitWalletConfigPolicyUpdate { update: WalletConfigPolicyUpdate },
 
     /// 0  `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     FinalizeWalletConfigPolicyUpdate { update: WalletConfigPolicyUpdate },
 
     /// 0. `[writable]` The multisig operation account
@@ -200,6 +203,7 @@ pub enum ProgramInstruction {
     /// 2. `[]` The wallet account
     /// 3. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 4. `[]` The sysvar clock account
+    /// 5. `[signer]` The rent return account
     InitDAppTransaction {
         account_guid_hash: BalanceAccountGuidHash,
         dapp: DAppBookEntry,
@@ -218,7 +222,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The multisig data account
     /// 2. `[]` The wallet account
     /// 3. `[writable]` The balance account
-    /// 4. `[signer]` The rent collector account
+    /// 4. `[signer, writable]` The rent return account
     /// 5. `[]` The sysvar clock account
     FinalizeDAppTransaction {
         account_guid_hash: BalanceAccountGuidHash,
@@ -229,6 +233,7 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The initiator account
     InitAccountSettingsUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         whitelist_enabled: Option<BooleanSetting>,
@@ -237,7 +242,7 @@ pub enum ProgramInstruction {
 
     /// 0  `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     FinalizeAccountSettingsUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         whitelist_enabled: Option<BooleanSetting>,
@@ -248,11 +253,12 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitDAppBookUpdate { update: DAppBookUpdate },
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
     FinalizeDAppBookUpdate { update: DAppBookUpdate },
 
@@ -260,11 +266,12 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitAddressBookUpdate { update: AddressBookUpdate },
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
     FinalizeAddressBookUpdate { update: AddressBookUpdate },
 
@@ -272,6 +279,7 @@ pub enum ProgramInstruction {
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitBalanceAccountNameUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         account_name_hash: BalanceAccountNameHash,
@@ -279,7 +287,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
     FinalizeBalanceAccountNameUpdate {
         account_guid_hash: BalanceAccountGuidHash,
@@ -290,6 +298,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitBalanceAccountPolicyUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountPolicyUpdate,
@@ -297,7 +306,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
     FinalizeBalanceAccountPolicyUpdate {
         account_guid_hash: BalanceAccountGuidHash,
@@ -306,10 +315,11 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The initiator/rent collector account
+    /// 2. `[signer]` The initiator account
     /// 3. `[]` The token mint account enabled for the given BalanceAccounts.
     /// 4. `[]` The sysvar clock account
-    /// 5..N `[]` One or more associated token accounts, corresponding in number
+    /// 5. `[signer]` The rent return account
+    /// 6..N `[]` One or more associated token accounts, corresponding in number
     ///           and order to the account GUID hashes.
     InitSPLTokenAccountsCreation {
         payer_account_guid_hash: BalanceAccountGuidHash,
@@ -318,7 +328,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The token mint account enabled for the given BalanceAccounts.
     /// 4. `[]` The payer balance account.
     /// 5. `[]` The sysvar clock account
@@ -348,6 +358,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
+    /// 4. `[signer]` The rent return account
     InitBalanceAccountAddressWhitelistUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountAddressWhitelistUpdate,
@@ -355,7 +366,7 @@ pub enum ProgramInstruction {
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
-    /// 2. `[signer]` The rent collector account
+    /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
     FinalizeBalanceAccountAddressWhitelistUpdate {
         account_guid_hash: BalanceAccountGuidHash,

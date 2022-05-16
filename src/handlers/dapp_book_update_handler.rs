@@ -1,6 +1,6 @@
 use crate::handlers::utils::{
     finalize_multisig_op, get_clock_from_next_account, next_program_account_info,
-    next_wallet_account_info, start_multisig_config_op,
+    next_signer_account_info, next_wallet_account_info, start_multisig_config_op,
 };
 use crate::instruction::DAppBookUpdate;
 use crate::model::multisig_op::MultisigOpParams;
@@ -20,6 +20,7 @@ pub fn init(
     let wallet_account_info = next_wallet_account_info(accounts_iter, program_id)?;
     let initiator_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
 
     let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
 
@@ -35,6 +36,7 @@ pub fn init(
             update: update.clone(),
         },
         *initiator_account_info.key,
+        *rent_return_account_info.key,
     )?;
 
     Wallet::pack(wallet, &mut wallet_account_info.data.borrow_mut())?;
@@ -50,14 +52,14 @@ pub fn finalize(
     let accounts_iter = &mut accounts.iter();
     let multisig_op_account_info = next_program_account_info(accounts_iter, program_id)?;
     let wallet_account_info = next_wallet_account_info(accounts_iter, program_id)?;
-    let account_to_return_rent_to = next_account_info(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
 
     let mut wallet = Wallet::unpack(&wallet_account_info.data.borrow_mut())?;
 
     finalize_multisig_op(
         &multisig_op_account_info,
-        &account_to_return_rent_to,
+        &rent_return_account_info,
         clock,
         MultisigOpParams::UpdateDAppBook {
             wallet_address: *wallet_account_info.key,

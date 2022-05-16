@@ -162,6 +162,7 @@ async fn test_remove_signer_fails_for_a_transfer_approver() {
             &context.wallet_account.pubkey(),
             &multisig_op_account.pubkey(),
             &context.assistant_account.pubkey(),
+            &context.pt_context.payer.pubkey(),
             SlotUpdateType::Clear,
             SlotId::new(2),
             context.approvers[2].pubkey_as_signer(),

@@ -2,8 +2,8 @@ use crate::constants::PUBKEY_BYTES;
 use crate::error::WalletError;
 use crate::handlers::utils::{
     create_associated_token_account_instruction, finalize_multisig_op, get_clock_from_next_account,
-    next_program_account_info, next_wallet_account_info, start_multisig_transfer_op,
-    transfer_sol_checked, validate_balance_account_and_get_seed,
+    next_program_account_info, next_signer_account_info, next_wallet_account_info,
+    start_multisig_transfer_op, transfer_sol_checked, validate_balance_account_and_get_seed,
 };
 use crate::model::address_book::AddressBookEntryNameHash;
 use crate::model::balance_account::BalanceAccountGuidHash;
@@ -38,9 +38,9 @@ pub fn init(
     let destination_account = next_account_info(accounts_iter)?;
     let initiator_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let token_mint = next_account_info(accounts_iter)?;
     let destination_token_account = next_account_info(accounts_iter)?;
-    let fee_payer_account = next_account_info(accounts_iter)?;
 
     let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
     let balance_account = wallet.get_balance_account(account_guid_hash)?;
@@ -101,7 +101,7 @@ pub fn init(
             // pay for associated token account with fee-payer account.
             invoke(
                 &create_associated_token_account_instruction(
-                    fee_payer_account,
+                    rent_return_account_info,
                     destination_token_account,
                     destination_account,
                     token_mint,
@@ -124,6 +124,7 @@ pub fn init(
             token_mint: *token_mint.key,
         },
         *initiator_account_info.key,
+        *rent_return_account_info.key,
     )
 }
 
@@ -140,7 +141,7 @@ pub fn finalize(
     let source_account = next_account_info(accounts_iter)?;
     let destination_account = next_account_info(accounts_iter)?;
     let system_program_account = next_account_info(accounts_iter)?;
-    let rent_collector_account_info = next_account_info(accounts_iter)?;
+    let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
 
     let is_spl = token_mint.to_bytes() != [0; PUBKEY_BYTES];
@@ -154,7 +155,7 @@ pub fn finalize(
 
     finalize_multisig_op(
         &multisig_op_account_info,
-        &rent_collector_account_info,
+        &rent_return_account_info,
         clock,
         MultisigOpParams::Transfer {
             wallet_address: *wallet_account_info.key,

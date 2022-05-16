@@ -251,9 +251,13 @@ pub struct MultisigOp {
     pub started_at: i64,
     pub expires_at: i64,
     pub operation_disposition: OperationDisposition,
+    pub initiator: Pubkey,
+    pub rent_return: Pubkey,
+    pub fee_amount: u64,
+    pub fee_account: Option<BalanceAccountGuidHash>,
 }
 
-const EMPTY_PARAMS_HASH: [u8; HASH_BYTES] = [0; HASH_BYTES];
+const EMPTY_HASH: [u8; HASH_BYTES] = [0; HASH_BYTES];
 
 impl MultisigOp {
     pub fn get_disposition_count(&self, disposition: ApprovalDisposition) -> u8 {
@@ -271,6 +275,9 @@ impl MultisigOp {
         started_at: i64,
         expires_at: i64,
         params: Option<MultisigOpParams>,
+        rent_return: Pubkey,
+        fee_amount: u64,
+        fee_account: Option<BalanceAccountGuidHash>,
     ) -> ProgramResult {
         self.disposition_records = approvers
             .iter()
@@ -288,6 +295,10 @@ impl MultisigOp {
         self.is_initialized = true;
         self.started_at = started_at;
         self.expires_at = expires_at;
+        self.initiator = initiator_disposition.0;
+        self.rent_return = rent_return;
+        self.fee_amount = fee_amount;
+        self.fee_account = fee_account;
 
         if self.get_disposition_count(ApprovalDisposition::APPROVE) == self.dispositions_required {
             self.operation_disposition = OperationDisposition::APPROVED
@@ -421,8 +432,19 @@ impl IsInitialized for MultisigOp {
 }
 
 impl Pack for MultisigOp {
-    const LEN: usize =
-        1 + 4 + ApprovalDispositionRecord::LEN * Wallet::MAX_SIGNERS + 1 + 1 + HASH_LEN + 8 + 8 + 1;
+    const LEN: usize = 1 // initialized
+        + 4 // version
+        + 1 // disposition count
+        + ApprovalDispositionRecord::LEN * Wallet::MAX_SIGNERS // dispositions
+        + 1 // dispositions required
+        + HASH_LEN // hash
+        + 8 // started at
+        + 8 // expires at
+        + 1 // operation disposition
+        + PUBKEY_BYTES // initiator
+        + PUBKEY_BYTES // rent return
+        + 8 // fee amount
+        + HASH_LEN; // fee account
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let dst = array_mut_ref![dst, 0, MultisigOp::LEN];
@@ -436,6 +458,10 @@ impl Pack for MultisigOp {
             started_at_dst,
             expires_at_dst,
             operation_disposition_dst,
+            initiator_dst,
+            rent_return_dst,
+            fee_amount_dst,
+            fee_account_dst,
         ) = mut_array_refs![
             dst,
             1,
@@ -446,7 +472,11 @@ impl Pack for MultisigOp {
             HASH_LEN,
             8,
             8,
-            1
+            1,
+            PUBKEY_BYTES,
+            PUBKEY_BYTES,
+            8,
+            HASH_LEN
         ];
 
         let MultisigOp {
@@ -458,6 +488,10 @@ impl Pack for MultisigOp {
             started_at,
             expires_at,
             operation_disposition,
+            initiator,
+            rent_return,
+            fee_amount,
+            fee_account,
         } = self;
 
         is_initialized_dst[0] = *is_initialized as u8;
@@ -477,13 +511,22 @@ impl Pack for MultisigOp {
         if let Some(hash) = params_hash {
             hash_dst.copy_from_slice(&hash.to_bytes())
         } else {
-            hash_dst.copy_from_slice(&EMPTY_PARAMS_HASH)
+            hash_dst.copy_from_slice(&EMPTY_HASH)
         }
 
         *started_at_dst = started_at.to_le_bytes();
         *expires_at_dst = expires_at.to_le_bytes();
 
         operation_disposition_dst[0] = operation_disposition.to_u8();
+
+        initiator_dst.copy_from_slice(&initiator.to_bytes());
+        rent_return_dst.copy_from_slice(&rent_return.to_bytes());
+        *fee_amount_dst = fee_amount.to_le_bytes();
+        if let Some(account) = fee_account {
+            fee_account_dst.copy_from_slice(&account.to_bytes());
+        } else {
+            fee_account_dst.copy_from_slice(&EMPTY_HASH)
+        }
     }
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
@@ -498,6 +541,10 @@ impl Pack for MultisigOp {
             started_at,
             expires_at,
             operation_disposition,
+            initiator,
+            rent_return,
+            fee_amount,
+            fee_account,
         ) = array_refs![
             src,
             1,
@@ -508,7 +555,11 @@ impl Pack for MultisigOp {
             HASH_LEN,
             8,
             8,
-            1
+            1,
+            PUBKEY_BYTES,
+            PUBKEY_BYTES,
+            8,
+            HASH_LEN
         ];
         let is_initialized = match is_initialized {
             [0] => false,
@@ -531,7 +582,7 @@ impl Pack for MultisigOp {
             version: u32::from_le_bytes(*version),
             disposition_records,
             dispositions_required: dispositions_required[0],
-            params_hash: if *params_hash == EMPTY_PARAMS_HASH {
+            params_hash: if *params_hash == EMPTY_HASH {
                 None
             } else {
                 Some(Hash::new_from_array(*params_hash))
@@ -539,6 +590,14 @@ impl Pack for MultisigOp {
             started_at: i64::from_le_bytes(*started_at),
             expires_at: i64::from_le_bytes(*expires_at),
             operation_disposition: OperationDisposition::from_u8(operation_disposition[0]),
+            initiator: Pubkey::new_from_array(*initiator),
+            rent_return: Pubkey::new_from_array(*rent_return),
+            fee_amount: u64::from_le_bytes(*fee_amount),
+            fee_account: if *fee_account == EMPTY_HASH {
+                None
+            } else {
+                Some(BalanceAccountGuidHash::new(fee_account))
+            },
         })
     }
 }
