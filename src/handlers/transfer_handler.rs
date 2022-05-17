@@ -27,6 +27,8 @@ use spl_token::state::Account as SPLAccount;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     destination_name_hash: &AddressBookEntryNameHash,
@@ -88,12 +90,12 @@ pub fn init(
                     )?;
                 }
                 Err(error) => {
-                    if error == WalletError::InvalidPDA.into() {
+                    return if error == WalletError::InvalidPDA.into() {
                         msg!("could not find BalanceAccount PDA for source GUID hash");
-                        return Err(WalletError::InvalidSourceAccount.into());
+                        Err(WalletError::InvalidSourceAccount.into())
                     } else {
                         msg!("unhandled error validating source BalanceAccount GUID hash");
-                        return Err(ProgramError::InvalidArgument);
+                        Err(ProgramError::InvalidArgument)
                     }
                 }
             }
@@ -125,6 +127,8 @@ pub fn init(
         },
         *initiator_account_info.key,
         *rent_return_account_info.key,
+        fee_amount,
+        fee_account_guid_hash,
     )
 }
 

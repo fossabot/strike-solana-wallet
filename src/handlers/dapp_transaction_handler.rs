@@ -26,6 +26,8 @@ use crate::version::{Versioned, VERSION};
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     account_guid_hash: &BalanceAccountGuidHash,
     dapp: DAppBookEntry,
     instruction_count: u8,
@@ -65,8 +67,8 @@ pub fn init(
         )?,
         None,
         *rent_return_account_info.key,
-        0,
-        None,
+        fee_amount,
+        fee_account_guid_hash,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 

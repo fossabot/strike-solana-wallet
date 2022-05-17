@@ -109,6 +109,8 @@ pub fn start_multisig_transfer_op(
     params: MultisigOpParams,
     initiator: Pubkey,
     rent_return: Pubkey,
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
 ) -> ProgramResult {
     let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
 
@@ -123,8 +125,8 @@ pub fn start_multisig_transfer_op(
         )?,
         Some(params),
         rent_return,
-        0,
-        None,
+        fee_amount,
+        fee_account_guid_hash,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 
@@ -138,6 +140,8 @@ pub fn start_multisig_config_op(
     params: MultisigOpParams,
     initiator: Pubkey,
     rent_return: Pubkey,
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
 ) -> ProgramResult {
     let mut multisig_op = MultisigOp::unpack_unchecked(&multisig_op_account_info.data.borrow())?;
 
@@ -149,8 +153,8 @@ pub fn start_multisig_config_op(
         calculate_expires(clock.unix_timestamp, wallet.approval_timeout_for_config)?,
         Some(params),
         rent_return,
-        0,
-        None,
+        fee_amount,
+        fee_account_guid_hash,
     )?;
     MultisigOp::pack(multisig_op, &mut multisig_op_account_info.data.borrow_mut())?;
 

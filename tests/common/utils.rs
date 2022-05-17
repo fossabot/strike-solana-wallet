@@ -493,7 +493,7 @@ pub async fn update_signer(
     );
     assert_eq!(multisig_op.initiator, approvers[0].pubkey());
     assert_eq!(multisig_op.rent_return, context.payer.pubkey());
-    assert!(multisig_op.fee_account.is_none());
+    assert!(multisig_op.fee_account_guid_hash.is_none());
     assert_eq!(multisig_op.fee_amount, 0);
 
     approve_or_deny_n_of_n_multisig_op(
@@ -670,7 +670,7 @@ pub async fn account_settings_update(
     );
     assert_eq!(multisig_op.initiator, context.approvers[0].pubkey());
     assert_eq!(multisig_op.rent_return, context.pt_context.payer.pubkey());
-    assert!(multisig_op.fee_account.is_none());
+    assert!(multisig_op.fee_account_guid_hash.is_none());
     assert_eq!(multisig_op.fee_amount, 0);
 
     assert_eq!(
@@ -1255,7 +1255,7 @@ pub async fn setup_balance_account_tests(
     assert_eq!(multisig_op.version, VERSION);
     assert_eq!(multisig_op.initiator, approvers[2].pubkey());
     assert_eq!(multisig_op.rent_return, pt_context.payer.pubkey());
-    assert!(multisig_op.fee_account.is_none());
+    assert!(multisig_op.fee_account_guid_hash.is_none());
     assert_eq!(multisig_op.fee_amount, 0);
 
     let expected_creation_params = BalanceAccountCreation {
@@ -2208,7 +2208,7 @@ pub fn assert_initialized_multisig_op(
     assert_eq!(multisig_op.params_hash.unwrap(), expected_params.hash());
     assert_eq!(multisig_op.initiator, *expected_initiator);
     assert_eq!(multisig_op.rent_return, *rent_return);
-    assert!(multisig_op.fee_account.is_none());
+    assert!(multisig_op.fee_account_guid_hash.is_none());
     assert_eq!(multisig_op.fee_amount, 0);
 }
 

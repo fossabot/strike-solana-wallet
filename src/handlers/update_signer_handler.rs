@@ -2,6 +2,7 @@ use crate::handlers::utils::{
     finalize_multisig_op, get_clock_from_next_account, next_program_account_info,
     next_signer_account_info, next_wallet_account_info, start_multisig_config_op,
 };
+use crate::model::balance_account::BalanceAccountGuidHash;
 use crate::model::multisig_op::{MultisigOpParams, SlotUpdateType};
 use crate::model::signer::Signer;
 use crate::model::wallet::Wallet;
@@ -14,6 +15,8 @@ use solana_program::pubkey::Pubkey;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     slot_update_type: SlotUpdateType,
     slot_id: SlotId<Signer>,
     signer: Signer,
@@ -44,6 +47,8 @@ pub fn init(
         },
         *initiator_account_info.key,
         *rent_return_account_info.key,
+        fee_amount,
+        fee_account_guid_hash,
     )
 }
 

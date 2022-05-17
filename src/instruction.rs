@@ -21,8 +21,9 @@ use crate::model::multisig_op::{
 use crate::model::signer::Signer;
 use crate::model::wallet::WalletGuidHash;
 use crate::serialization_utils::{
-    append_duration, pack_option, read_duration, read_fixed_size_array, read_slice, read_u16,
-    read_u8, unpack_option,
+    append_duration, pack_option, read_account_guid_hash, read_account_name_hash,
+    read_address_book_entry_name_hash, read_duration, read_fixed_size_array, read_slice, read_u16,
+    read_u64, read_u8, unpack_option,
 };
 use crate::utils::SlotId;
 
@@ -78,6 +79,8 @@ pub enum ProgramInstruction {
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
     InitBalanceAccountCreation {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         creation_params: BalanceAccountCreation,
     },
@@ -85,6 +88,7 @@ pub enum ProgramInstruction {
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
+    /// 3. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeBalanceAccountCreation {
         account_guid_hash: BalanceAccountGuidHash,
         creation_params: BalanceAccountCreation,
@@ -105,6 +109,8 @@ pub enum ProgramInstruction {
     /// 11. `[]` The Rent sysvar program (only used for SPL transfers)
     /// 12. `[]` The SPL associated token program (only used for SPL transfers)
     InitTransfer {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,
         destination_name_hash: AddressBookEntryNameHash,
@@ -129,6 +135,7 @@ pub enum ProgramInstruction {
     /// 8. `[writable]` The destination token account, if this is an SPL transfer
     /// 9. `[]` The SPL token program account, if this is an SPL transfer
     /// 10. `[]` The token mint authority, if this is an SPL transfer
+    /// 11. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeTransfer {
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,
@@ -148,6 +155,8 @@ pub enum ProgramInstruction {
     /// 10. `[]` The Rent sysvar program
     /// 11. `[]` The SPL associated token program
     InitWrapUnwrap {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,
         direction: WrapDirection,
@@ -161,17 +170,21 @@ pub enum ProgramInstruction {
     /// 5. `[]` The sysvar clock account
     /// 6. `[writable]` The wrapped SOL token account
     /// 7. `[]` The SPL token account
+    /// 8. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeWrapUnwrap {
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,
         direction: WrapDirection,
     },
+
     /// 0. `[writable]` The multisig operation account
     /// 1. `[]` The wallet account
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
     InitUpdateSigner {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         slot_update_type: SlotUpdateType,
         slot_id: SlotId<Signer>,
         signer: Signer,
@@ -180,6 +193,7 @@ pub enum ProgramInstruction {
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
+    /// 3. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeUpdateSigner {
         slot_update_type: SlotUpdateType,
         slot_id: SlotId<Signer>,
@@ -191,11 +205,16 @@ pub enum ProgramInstruction {
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
-    InitWalletConfigPolicyUpdate { update: WalletConfigPolicyUpdate },
+    InitWalletConfigPolicyUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
+        update: WalletConfigPolicyUpdate,
+    },
 
     /// 0  `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
+    /// 3. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeWalletConfigPolicyUpdate { update: WalletConfigPolicyUpdate },
 
     /// 0. `[writable]` The multisig operation account
@@ -205,6 +224,8 @@ pub enum ProgramInstruction {
     /// 4. `[]` The sysvar clock account
     /// 5. `[signer]` The rent return account
     InitDAppTransaction {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         dapp: DAppBookEntry,
         instruction_count: u8,
@@ -224,6 +245,7 @@ pub enum ProgramInstruction {
     /// 3. `[writable]` The balance account
     /// 4. `[signer, writable]` The rent return account
     /// 5. `[]` The sysvar clock account
+    /// 6. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeDAppTransaction {
         account_guid_hash: BalanceAccountGuidHash,
         params_hash: Hash,
@@ -235,6 +257,8 @@ pub enum ProgramInstruction {
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The initiator account
     InitAccountSettingsUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         whitelist_enabled: Option<BooleanSetting>,
         dapps_enabled: Option<BooleanSetting>,
@@ -243,6 +267,7 @@ pub enum ProgramInstruction {
     /// 0  `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
+    /// 3. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeAccountSettingsUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         whitelist_enabled: Option<BooleanSetting>,
@@ -254,12 +279,17 @@ pub enum ProgramInstruction {
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
-    InitDAppBookUpdate { update: DAppBookUpdate },
+    InitDAppBookUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
+        update: DAppBookUpdate,
+    },
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
+    /// 4. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeDAppBookUpdate { update: DAppBookUpdate },
 
     /// 0. `[writable]` The multisig operation account
@@ -267,12 +297,17 @@ pub enum ProgramInstruction {
     /// 2. `[signer]` The initiator account (either the transaction assistant or an approver)
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
-    InitAddressBookUpdate { update: AddressBookUpdate },
+    InitAddressBookUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
+        update: AddressBookUpdate,
+    },
 
     /// 0. `[writable]` The multisig operation account
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
+    /// 4. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeAddressBookUpdate { update: AddressBookUpdate },
 
     /// 0. `[writable]` The multisig operation account
@@ -281,6 +316,8 @@ pub enum ProgramInstruction {
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
     InitBalanceAccountNameUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         account_name_hash: BalanceAccountNameHash,
     },
@@ -289,6 +326,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
+    /// 4. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeBalanceAccountNameUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         account_name_hash: BalanceAccountNameHash,
@@ -300,6 +338,8 @@ pub enum ProgramInstruction {
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
     InitBalanceAccountPolicyUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountPolicyUpdate,
     },
@@ -308,6 +348,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
+    /// 4. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeBalanceAccountPolicyUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountPolicyUpdate,
@@ -322,6 +363,8 @@ pub enum ProgramInstruction {
     /// 6..N `[]` One or more associated token accounts, corresponding in number
     ///           and order to the account GUID hashes.
     InitSPLTokenAccountsCreation {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         payer_account_guid_hash: BalanceAccountGuidHash,
         account_guid_hashes: Vec<BalanceAccountGuidHash>,
     },
@@ -336,7 +379,8 @@ pub enum ProgramInstruction {
     /// 7. `[]` The SPL associated token program
     /// 8. `[]` The SPL token program (only used by SPL associated token program)
     /// 9. `[]` The Rent sysvar program
-    /// 10..N `[]` One or more associated token accounts.
+    /// 10. `[writable]` The fee account, if fee_account_guid_hash was set in the init
+    /// 11..N `[]` One or more associated token accounts.
     /// N..M  `[]` One or more BalanceAccount accounts, corresponding in number
     ///            and order to the associated token accounts.
     FinalizeSPLTokenAccountsCreation {
@@ -360,6 +404,8 @@ pub enum ProgramInstruction {
     /// 3. `[]` The sysvar clock account
     /// 4. `[signer]` The rent return account
     InitBalanceAccountAddressWhitelistUpdate {
+        fee_amount: u64,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountAddressWhitelistUpdate,
     },
@@ -368,6 +414,7 @@ pub enum ProgramInstruction {
     /// 1. `[writable]` The wallet account
     /// 2. `[signer, writable]` The rent return account
     /// 3. `[]` The sysvar clock account
+    /// 4. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     FinalizeBalanceAccountAddressWhitelistUpdate {
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountAddressWhitelistUpdate,
@@ -390,12 +437,16 @@ impl ProgramInstruction {
                 buf.extend_from_slice(&initial_config_bytes);
             }
             &ProgramInstruction::InitBalanceAccountCreation {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref creation_params,
             } => {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 creation_params.pack(&mut update_bytes);
                 buf.push(TAG_INIT_BALANCE_ACCOUNT_CREATION);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(&update_bytes);
             }
@@ -410,11 +461,15 @@ impl ProgramInstruction {
                 buf.extend_from_slice(&update_bytes);
             }
             &ProgramInstruction::InitTransfer {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref amount,
                 ref destination_name_hash,
             } => {
                 buf.push(TAG_INIT_TRANSFER);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
                 buf.extend_from_slice(destination_name_hash.to_bytes());
@@ -439,11 +494,15 @@ impl ProgramInstruction {
                 buf.extend_from_slice(params_hash.as_ref());
             }
             &ProgramInstruction::InitWrapUnwrap {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref amount,
                 ref direction,
             } => {
                 buf.push(TAG_INIT_WRAP_UNWRAP);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(&account_guid_hash.to_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
                 buf.push(direction.to_u8());
@@ -459,11 +518,15 @@ impl ProgramInstruction {
                 buf.push(direction.to_u8());
             }
             &ProgramInstruction::InitUpdateSigner {
+                fee_amount,
+                fee_account_guid_hash,
                 ref slot_update_type,
                 ref slot_id,
                 ref signer,
             } => {
                 buf.push(TAG_INIT_UPDATE_SIGNER);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.push(slot_update_type.to_u8());
                 buf.push(slot_id.value as u8);
                 buf.extend_from_slice(signer.key.as_ref());
@@ -478,10 +541,16 @@ impl ProgramInstruction {
                 buf.push(slot_id.value as u8);
                 buf.extend_from_slice(signer.key.as_ref());
             }
-            &ProgramInstruction::InitWalletConfigPolicyUpdate { ref update } => {
+            &ProgramInstruction::InitWalletConfigPolicyUpdate {
+                fee_amount,
+                fee_account_guid_hash,
+                ref update,
+            } => {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 buf.push(TAG_INIT_WALLET_CONFIG_POLICY_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(&update_bytes);
             }
             &ProgramInstruction::FinalizeWalletConfigPolicyUpdate { ref update } => {
@@ -491,11 +560,15 @@ impl ProgramInstruction {
                 buf.extend_from_slice(&update_bytes);
             }
             &ProgramInstruction::InitDAppTransaction {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref dapp,
                 instruction_count,
             } => {
                 buf.push(TAG_INIT_DAPP_TRANSACTION);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(&account_guid_hash.to_bytes());
                 let mut buf2 = vec![0; DAppBookEntry::LEN];
                 dapp.pack_into_slice(buf2.as_mut_slice());
@@ -511,11 +584,15 @@ impl ProgramInstruction {
                 buf.extend_from_slice(&params_hash.to_bytes());
             }
             &ProgramInstruction::InitAccountSettingsUpdate {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref whitelist_enabled,
                 ref dapps_enabled,
             } => {
                 buf.push(TAG_INIT_ACCOUNT_SETTINGS_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(&account_guid_hash.to_bytes());
                 pack_option(whitelist_enabled.as_ref(), &mut buf);
                 pack_option(dapps_enabled.as_ref(), &mut buf);
@@ -530,8 +607,14 @@ impl ProgramInstruction {
                 pack_option(whitelist_enabled.as_ref(), &mut buf);
                 pack_option(dapps_enabled.as_ref(), &mut buf);
             }
-            &ProgramInstruction::InitDAppBookUpdate { ref update } => {
+            &ProgramInstruction::InitDAppBookUpdate {
+                fee_amount,
+                fee_account_guid_hash,
+                ref update,
+            } => {
                 buf.push(TAG_INIT_DAPP_BOOK_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 buf.extend_from_slice(&update_bytes);
@@ -542,10 +625,16 @@ impl ProgramInstruction {
                 update.pack(&mut update_bytes);
                 buf.extend_from_slice(&update_bytes);
             }
-            &ProgramInstruction::InitAddressBookUpdate { ref update } => {
+            &ProgramInstruction::InitAddressBookUpdate {
+                fee_amount,
+                fee_account_guid_hash,
+                ref update,
+            } => {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 buf.push(TAG_INIT_ADDRESS_BOOK_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(&update_bytes);
             }
             &ProgramInstruction::FinalizeAddressBookUpdate { ref update } => {
@@ -555,10 +644,14 @@ impl ProgramInstruction {
                 buf.extend_from_slice(&update_bytes);
             }
             &ProgramInstruction::InitBalanceAccountNameUpdate {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref account_name_hash,
             } => {
                 buf.push(TAG_INIT_BALANCE_ACCOUNT_NAME_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(account_name_hash.to_bytes());
             }
@@ -571,12 +664,16 @@ impl ProgramInstruction {
                 buf.extend_from_slice(account_name_hash.to_bytes());
             }
             &ProgramInstruction::InitBalanceAccountPolicyUpdate {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref update,
             } => {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 buf.push(TAG_INIT_BALANCE_ACCOUNT_POLICY_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(&update_bytes);
             }
@@ -597,10 +694,14 @@ impl ProgramInstruction {
                 pack_supply_dapp_transaction_instructions(starting_index, instructions, &mut buf);
             }
             &ProgramInstruction::InitSPLTokenAccountsCreation {
+                fee_amount,
+                fee_account_guid_hash,
                 ref payer_account_guid_hash,
                 ref account_guid_hashes,
             } => {
                 buf.push(TAG_INIT_BALANCE_ACCOUNT_ENABLE_SPL_TOKEN);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(payer_account_guid_hash.to_bytes());
                 pack_balance_account_guid_hash_vec(account_guid_hashes, &mut buf);
             }
@@ -619,12 +720,16 @@ impl ProgramInstruction {
                 buf.push(TAG_CLEANUP);
             }
             &ProgramInstruction::InitBalanceAccountAddressWhitelistUpdate {
+                fee_amount,
+                fee_account_guid_hash,
                 ref account_guid_hash,
                 ref update,
             } => {
                 let mut update_bytes: Vec<u8> = Vec::new();
                 update.pack(&mut update_bytes);
                 buf.push(TAG_INIT_BALANCE_ACCOUNT_ADDRESS_WHITELIST_UPDATE);
+                buf.put_u64_le(fee_amount);
+                pack_option(fee_account_guid_hash.as_ref(), &mut buf);
                 buf.extend_from_slice(account_guid_hash.to_bytes());
                 buf.extend_from_slice(&update_bytes);
             }
@@ -747,13 +852,13 @@ impl ProgramInstruction {
     fn unpack_init_balance_account_creation_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
         Ok(Self::InitBalanceAccountCreation {
-            account_guid_hash: unpack_account_guid_hash(bytes)?,
-            creation_params: BalanceAccountCreation::unpack(
-                bytes
-                    .get(HASH_LEN..)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount: read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?,
+            fee_account_guid_hash: unpack_option::<BalanceAccountGuidHash>(iter)?,
+            account_guid_hash: read_account_guid_hash(iter)
+                .ok_or(ProgramError::InvalidInstructionData)?,
+            creation_params: BalanceAccountCreation::unpack(iter.as_slice())?,
         })
     }
 
@@ -773,13 +878,13 @@ impl ProgramInstruction {
     fn unpack_init_balance_account_policy_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
         Ok(Self::InitBalanceAccountPolicyUpdate {
-            account_guid_hash: unpack_account_guid_hash(bytes)?,
-            update: BalanceAccountPolicyUpdate::unpack(
-                bytes
-                    .get(HASH_LEN..)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount: read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?,
+            fee_account_guid_hash: unpack_option::<BalanceAccountGuidHash>(iter)?,
+            account_guid_hash: read_account_guid_hash(iter)
+                .ok_or(ProgramError::InvalidInstructionData)?,
+            update: BalanceAccountPolicyUpdate::unpack(iter.as_slice())?,
         })
     }
 
@@ -799,26 +904,19 @@ impl ProgramInstruction {
     fn unpack_init_transfer_for_approval_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
-        let account_guid_hash = unpack_account_guid_hash(bytes)?;
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
 
-        let amount = bytes
-            .get(HASH_LEN..HASH_LEN + 8)
-            .and_then(|slice| slice.try_into().ok())
-            .map(u64::from_le_bytes)
-            .ok_or(ProgramError::InvalidInstructionData)?;
-
-        let byte_offset = HASH_LEN + 8;
-        let destination_name_hash = bytes
-            .get(byte_offset..byte_offset + HASH_LEN)
-            .and_then(|slice| {
-                slice
-                    .try_into()
-                    .ok()
-                    .map(|bytes| AddressBookEntryNameHash::new(bytes))
-            })
-            .ok_or(ProgramError::InvalidInstructionData)?;
+        let account_guid_hash =
+            read_account_guid_hash(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let destination_name_hash =
+            read_address_book_entry_name_hash(iter).ok_or(ProgramError::InvalidInstructionData)?;
 
         Ok(Self::InitTransfer {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             amount,
             destination_name_hash,
@@ -858,19 +956,21 @@ impl ProgramInstruction {
     fn unpack_init_wrap_unwrap_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
-        if let Some(direction) = bytes.get(40) {
-            Ok(Self::InitWrapUnwrap {
-                account_guid_hash: unpack_account_guid_hash(bytes)?,
-                amount: bytes
-                    .get(HASH_LEN..HASH_LEN + 8)
-                    .and_then(|slice| slice.try_into().ok())
-                    .map(u64::from_le_bytes)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-                direction: WrapDirection::from_u8(*direction),
-            })
-        } else {
-            Err(ProgramError::InvalidInstructionData)
-        }
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
+        let account_guid_hash =
+            read_account_guid_hash(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let direction = read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
+
+        Ok(Self::InitWrapUnwrap {
+            fee_amount,
+            fee_account_guid_hash,
+            account_guid_hash,
+            amount,
+            direction: WrapDirection::from_u8(*direction),
+        })
     }
 
     fn unpack_finalize_wrap_unwrap_instruction(
@@ -894,16 +994,17 @@ impl ProgramInstruction {
     fn unpack_init_update_signer_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
-        let (slot_update_type, rest) = bytes
-            .split_first()
-            .ok_or(ProgramError::InvalidInstructionData)?;
-        let (slot_id, rest) = rest
-            .split_first()
-            .ok_or(ProgramError::InvalidInstructionData)?;
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
+        let slot_update_type = read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let slot_id = read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
         Ok(Self::InitUpdateSigner {
+            fee_amount,
+            fee_account_guid_hash,
             slot_update_type: SlotUpdateType::from_u8(*slot_update_type),
             slot_id: SlotId::new(*slot_id as usize),
-            signer: Signer::unpack_from_slice(rest)?,
+            signer: Signer::unpack_from_slice(iter.as_slice())?,
         })
     }
 
@@ -926,8 +1027,13 @@ impl ProgramInstruction {
     fn unpack_init_wallet_config_policy_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
         Ok(Self::InitWalletConfigPolicyUpdate {
-            update: WalletConfigPolicyUpdate::unpack(bytes)?,
+            fee_amount,
+            fee_account_guid_hash,
+            update: WalletConfigPolicyUpdate::unpack(iter.as_slice())?,
         })
     }
 
@@ -943,6 +1049,8 @@ impl ProgramInstruction {
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
         let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
         let account_guid_hash = unpack_account_guid_hash(
             read_slice(iter, HASH_LEN).ok_or(ProgramError::InvalidInstructionData)?,
         )?;
@@ -951,6 +1059,8 @@ impl ProgramInstruction {
         )?;
         let instruction_count = read_u8(iter).ok_or(ProgramError::InvalidInstructionData)?;
         Ok(Self::InitDAppTransaction {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             dapp,
             instruction_count: *instruction_count,
@@ -977,9 +1087,10 @@ impl ProgramInstruction {
     ) -> Result<ProgramInstruction, ProgramError> {
         let iter = &mut bytes.into_iter();
         Ok(Self::InitAccountSettingsUpdate {
-            account_guid_hash: unpack_account_guid_hash(
-                read_slice(iter, HASH_LEN).ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount: read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?,
+            fee_account_guid_hash: unpack_option::<BalanceAccountGuidHash>(iter)?,
+            account_guid_hash: read_account_guid_hash(iter)
+                .ok_or(ProgramError::InvalidInstructionData)?,
             whitelist_enabled: unpack_option::<BooleanSetting>(iter)?,
             dapps_enabled: unpack_option::<BooleanSetting>(iter)?,
         })
@@ -1001,8 +1112,13 @@ impl ProgramInstruction {
     fn unpack_init_dapp_book_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
         Ok(Self::InitDAppBookUpdate {
-            update: DAppBookUpdate::unpack(bytes)?,
+            fee_amount,
+            fee_account_guid_hash,
+            update: DAppBookUpdate::unpack(iter.as_slice())?,
         })
     }
 
@@ -1017,8 +1133,13 @@ impl ProgramInstruction {
     fn unpack_init_address_book_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
         Ok(Self::InitAddressBookUpdate {
-            update: AddressBookUpdate::unpack(bytes)?,
+            fee_amount,
+            fee_account_guid_hash,
+            update: AddressBookUpdate::unpack(iter.as_slice())?,
         })
     }
 
@@ -1033,13 +1154,14 @@ impl ProgramInstruction {
     fn unpack_init_balance_account_name_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
         Ok(Self::InitBalanceAccountNameUpdate {
-            account_guid_hash: unpack_account_guid_hash(bytes)?,
-            account_name_hash: unpack_account_name_hash(
-                bytes
-                    .get(HASH_LEN..)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount: read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?,
+            fee_account_guid_hash: unpack_option::<BalanceAccountGuidHash>(iter)?,
+            account_guid_hash: read_account_guid_hash(iter)
+                .ok_or(ProgramError::InvalidInstructionData)?,
+            account_name_hash: read_account_name_hash(iter)
+                .ok_or(ProgramError::InvalidInstructionData)?,
         })
     }
 
@@ -1059,17 +1181,17 @@ impl ProgramInstruction {
     fn unpack_init_balance_account_enable_spl_token(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
+        let payer_account_guid_hash =
+            read_account_guid_hash(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let account_guid_hashes = unpack_account_guid_hash_vec(iter.as_slice())?;
         Ok(Self::InitSPLTokenAccountsCreation {
-            payer_account_guid_hash: unpack_account_guid_hash(
-                bytes
-                    .get(0..HASH_LEN)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
-            account_guid_hashes: unpack_account_guid_hash_vec(
-                bytes
-                    .get(HASH_LEN..)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount,
+            fee_account_guid_hash,
+            payer_account_guid_hash,
+            account_guid_hashes,
         })
     }
 
@@ -1104,13 +1226,17 @@ impl ProgramInstruction {
     fn unpack_init_balance_account_address_whitelist_update_instruction(
         bytes: &[u8],
     ) -> Result<ProgramInstruction, ProgramError> {
+        let iter = &mut bytes.into_iter();
+        let fee_amount = read_u64(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let fee_account_guid_hash = unpack_option::<BalanceAccountGuidHash>(iter)?;
+        let account_guid_hash =
+            read_account_guid_hash(iter).ok_or(ProgramError::InvalidInstructionData)?;
+        let update = BalanceAccountAddressWhitelistUpdate::unpack(iter.as_slice())?;
         Ok(Self::InitBalanceAccountAddressWhitelistUpdate {
-            account_guid_hash: unpack_account_guid_hash(bytes)?,
-            update: BalanceAccountAddressWhitelistUpdate::unpack(
-                bytes
-                    .get(HASH_LEN..)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            )?,
+            fee_amount,
+            fee_account_guid_hash,
+            account_guid_hash,
+            update,
         })
     }
 

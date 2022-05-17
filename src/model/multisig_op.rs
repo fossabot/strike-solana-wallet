@@ -254,7 +254,7 @@ pub struct MultisigOp {
     pub initiator: Pubkey,
     pub rent_return: Pubkey,
     pub fee_amount: u64,
-    pub fee_account: Option<BalanceAccountGuidHash>,
+    pub fee_account_guid_hash: Option<BalanceAccountGuidHash>,
 }
 
 const EMPTY_HASH: [u8; HASH_BYTES] = [0; HASH_BYTES];
@@ -277,7 +277,7 @@ impl MultisigOp {
         params: Option<MultisigOpParams>,
         rent_return: Pubkey,
         fee_amount: u64,
-        fee_account: Option<BalanceAccountGuidHash>,
+        fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     ) -> ProgramResult {
         self.disposition_records = approvers
             .iter()
@@ -298,7 +298,7 @@ impl MultisigOp {
         self.initiator = initiator_disposition.0;
         self.rent_return = rent_return;
         self.fee_amount = fee_amount;
-        self.fee_account = fee_account;
+        self.fee_account_guid_hash = fee_account_guid_hash;
 
         if self.get_disposition_count(ApprovalDisposition::APPROVE) == self.dispositions_required {
             self.operation_disposition = OperationDisposition::APPROVED
@@ -461,7 +461,7 @@ impl Pack for MultisigOp {
             initiator_dst,
             rent_return_dst,
             fee_amount_dst,
-            fee_account_dst,
+            fee_account_guid_hash_dst,
         ) = mut_array_refs![
             dst,
             1,
@@ -491,7 +491,7 @@ impl Pack for MultisigOp {
             initiator,
             rent_return,
             fee_amount,
-            fee_account,
+            fee_account_guid_hash,
         } = self;
 
         is_initialized_dst[0] = *is_initialized as u8;
@@ -522,10 +522,10 @@ impl Pack for MultisigOp {
         initiator_dst.copy_from_slice(&initiator.to_bytes());
         rent_return_dst.copy_from_slice(&rent_return.to_bytes());
         *fee_amount_dst = fee_amount.to_le_bytes();
-        if let Some(account) = fee_account {
-            fee_account_dst.copy_from_slice(&account.to_bytes());
+        if let Some(account) = fee_account_guid_hash {
+            fee_account_guid_hash_dst.copy_from_slice(&account.to_bytes());
         } else {
-            fee_account_dst.copy_from_slice(&EMPTY_HASH)
+            fee_account_guid_hash_dst.copy_from_slice(&EMPTY_HASH)
         }
     }
 
@@ -544,7 +544,7 @@ impl Pack for MultisigOp {
             initiator,
             rent_return,
             fee_amount,
-            fee_account,
+            fee_account_guid_hash,
         ) = array_refs![
             src,
             1,
@@ -593,10 +593,10 @@ impl Pack for MultisigOp {
             initiator: Pubkey::new_from_array(*initiator),
             rent_return: Pubkey::new_from_array(*rent_return),
             fee_amount: u64::from_le_bytes(*fee_amount),
-            fee_account: if *fee_account == EMPTY_HASH {
+            fee_account_guid_hash: if *fee_account_guid_hash == EMPTY_HASH {
                 None
             } else {
-                Some(BalanceAccountGuidHash::new(fee_account))
+                Some(BalanceAccountGuidHash::new(fee_account_guid_hash))
             },
         })
     }

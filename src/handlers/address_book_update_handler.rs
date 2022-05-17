@@ -3,6 +3,7 @@ use crate::handlers::utils::{
     next_signer_account_info, next_wallet_account_info, start_multisig_config_op,
 };
 use crate::instruction::AddressBookUpdate;
+use crate::model::balance_account::BalanceAccountGuidHash;
 use crate::model::multisig_op::MultisigOpParams;
 use crate::model::wallet::Wallet;
 use solana_program::account_info::{next_account_info, AccountInfo};
@@ -13,6 +14,8 @@ use solana_program::pubkey::Pubkey;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     update: &AddressBookUpdate,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
@@ -36,6 +39,8 @@ pub fn init(
         },
         *initiator_account_info.key,
         *rent_return_account_info.key,
+        fee_amount,
+        fee_account_guid_hash,
     )
 }
 

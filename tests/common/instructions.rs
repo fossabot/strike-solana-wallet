@@ -101,6 +101,9 @@ pub fn set_approval_disposition(
     }
 }
 
+const fee_amount: u64 = 0;
+const fee_account_guid_hash: Option<BalanceAccountGuidHash> = None;
+
 pub fn init_balance_account_creation_instruction(
     program_id: &Pubkey,
     wallet_account: &Pubkey,
@@ -125,6 +128,8 @@ pub fn init_balance_account_creation_instruction(
         initiator_account,
         rent_return_account,
         ProgramInstruction::InitBalanceAccountCreation {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             creation_params: BalanceAccountCreation {
                 slot_id,
@@ -183,7 +188,11 @@ pub fn init_dapp_book_update(
         multisig_op_account,
         initiator_account,
         rent_return_account,
-        ProgramInstruction::InitDAppBookUpdate { update },
+        ProgramInstruction::InitDAppBookUpdate {
+            fee_amount,
+            fee_account_guid_hash,
+            update,
+        },
     )
 }
 
@@ -230,6 +239,8 @@ pub fn init_balance_account_policy_update_instruction(
             AccountMeta::new_readonly(*rent_return_account, true),
         ],
         data: ProgramInstruction::InitBalanceAccountPolicyUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             update: update.clone(),
         }
@@ -279,6 +290,8 @@ pub fn init_transfer(
     fee_payer: &Pubkey,
 ) -> Instruction {
     let data = ProgramInstruction::InitTransfer {
+        fee_amount,
+        fee_account_guid_hash,
         account_guid_hash,
         amount,
         destination_name_hash,
@@ -380,6 +393,8 @@ pub fn init_wrap_unwrap(
     direction: WrapDirection,
 ) -> Instruction {
     let data = ProgramInstruction::InitWrapUnwrap {
+        fee_amount,
+        fee_account_guid_hash,
         account_guid_hash: *account_guid_hash,
         amount,
         direction,
@@ -472,6 +487,8 @@ pub fn init_update_signer(
         initiator_account,
         rent_return_account,
         ProgramInstruction::InitUpdateSigner {
+            fee_amount,
+            fee_account_guid_hash,
             slot_update_type,
             slot_id,
             signer,
@@ -528,6 +545,8 @@ pub fn init_wallet_config_policy_update_instruction(
             AccountMeta::new_readonly(rent_return_account, true),
         ],
         data: ProgramInstruction::InitWalletConfigPolicyUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             update: update.clone(),
         }
         .borrow()
@@ -570,6 +589,8 @@ pub fn init_dapp_transaction(
     instruction_count: u8,
 ) -> Instruction {
     let data = ProgramInstruction::InitDAppTransaction {
+        fee_amount,
+        fee_account_guid_hash,
         account_guid_hash: *account_guid_hash,
         dapp,
         instruction_count,
@@ -681,6 +702,8 @@ pub fn init_account_settings_update(
         initiator_account,
         rent_return_account,
         ProgramInstruction::InitAccountSettingsUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             whitelist_enabled: whitelist_status,
             dapps_enabled,
@@ -735,6 +758,8 @@ pub fn init_balance_account_name_update(
         initiator_account,
         rent_return_account,
         ProgramInstruction::InitBalanceAccountNameUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             account_name_hash,
         },
@@ -787,6 +812,8 @@ pub fn init_address_book_update_instruction(
         initiator_account,
         rent_return_account,
         ProgramInstruction::InitAddressBookUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             update: AddressBookUpdate {
                 add_address_book_entries: add_address_book_entries.clone(),
                 remove_address_book_entries: remove_address_book_entries.clone(),
@@ -832,6 +859,8 @@ pub fn init_balance_account_enable_spl_token(
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> Instruction {
     let data = ProgramInstruction::InitSPLTokenAccountsCreation {
+        fee_amount,
+        fee_account_guid_hash,
         payer_account_guid_hash: payer_account_guid_hash.clone(),
         account_guid_hashes: account_guid_hashes.clone(),
     }
@@ -977,6 +1006,8 @@ pub fn init_balance_account_address_whitelist_update_instruction(
             AccountMeta::new_readonly(*rent_return_account, true),
         ],
         data: ProgramInstruction::InitBalanceAccountAddressWhitelistUpdate {
+            fee_amount,
+            fee_account_guid_hash,
             account_guid_hash,
             update: update.clone(),
         }

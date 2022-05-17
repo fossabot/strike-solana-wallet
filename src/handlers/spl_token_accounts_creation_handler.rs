@@ -34,6 +34,8 @@ pub const MAX_BALANCE_ACCOUNT_GUID_HASHES: usize = 5;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     payer_account_guid_hash: &BalanceAccountGuidHash,
     account_guid_hashes: &Vec<BalanceAccountGuidHash>,
 ) -> ProgramResult {
@@ -113,6 +115,8 @@ pub fn init(
         },
         *initiator_account_info.key,
         *rent_return_account_info.key,
+        fee_amount,
+        fee_account_guid_hash,
     )?;
 
     Wallet::pack(wallet, &mut wallet_account_info.data.borrow_mut())?;

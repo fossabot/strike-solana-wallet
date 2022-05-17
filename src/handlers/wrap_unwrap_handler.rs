@@ -21,6 +21,8 @@ use spl_token::state::Account as SPLAccount;
 pub fn init(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    fee_amount: u64,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     direction: WrapDirection,
@@ -85,6 +87,8 @@ pub fn init(
         },
         *initiator_account.key,
         *rent_return_account_info.key,
+        fee_amount,
+        fee_account_guid_hash,
     )
 }
 
