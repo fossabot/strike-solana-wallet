@@ -253,6 +253,7 @@ pub async fn finalize_wallet_config_policy_update(
             multisig_op_account,
             test_context.payer.pubkey(),
             update,
+            None,
         ),
     )
     .await;
@@ -390,6 +391,8 @@ pub async fn init_update_signer(
     slot_update_type: SlotUpdateType,
     slot_id: usize,
     signer: Signer,
+    fee_amount: Option<u64>,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
 ) -> Result<Pubkey, BanksClientError> {
     let rent = context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
@@ -414,6 +417,8 @@ pub async fn init_update_signer(
                 slot_update_type,
                 SlotId::new(slot_id),
                 signer,
+                fee_amount,
+                fee_account_guid_hash,
             ),
         ],
         Some(&context.payer.pubkey()),
@@ -435,9 +440,19 @@ pub async fn update_signer(
     signer: Signer,
     expected_signers: Option<Signers>,
     expected_error: Option<InstructionError>,
+    fee_amount: Option<u64>,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
 ) {
-    let init_multisig_op_result =
-        init_update_signer(context, approvers[0], slot_update_type, slot_id, signer).await;
+    let init_multisig_op_result = init_update_signer(
+        context,
+        approvers[0],
+        slot_update_type,
+        slot_id,
+        signer,
+        fee_amount,
+        fee_account_guid_hash,
+    )
+    .await;
 
     let multisig_op_account = match expected_error {
         None => init_multisig_op_result.unwrap(),
@@ -489,12 +504,16 @@ pub async fn update_signer(
             slot_id: SlotId::new(slot_id),
             signer
         }
-        .hash()
+        .hash(&multisig_op)
     );
     assert_eq!(multisig_op.initiator, approvers[0].pubkey());
     assert_eq!(multisig_op.rent_return, context.payer.pubkey());
-    assert!(multisig_op.fee_account_guid_hash.is_none());
-    assert_eq!(multisig_op.fee_amount, 0);
+    if fee_account_guid_hash.is_some() {
+        assert_eq!(multisig_op.fee_account_guid_hash, fee_account_guid_hash);
+    } else {
+        assert!(multisig_op.fee_account_guid_hash.is_none());
+    }
+    assert_eq!(multisig_op.fee_amount, fee_amount.unwrap_or(0));
 
     approve_or_deny_n_of_n_multisig_op(
         context.banks_client.borrow_mut(),
@@ -534,6 +553,7 @@ pub async fn update_signer(
             slot_update_type,
             SlotId::new(slot_id),
             signer,
+            None,
         )],
         Some(&context.payer.pubkey()),
         &[&context.payer],
@@ -583,6 +603,9 @@ pub async fn account_settings_update(
     whitelist_status: Option<BooleanSetting>,
     dapps_enabled: Option<BooleanSetting>,
     expected_error: Option<InstructionError>,
+    fee_amount: Option<u64>,
+    fee_account_guid_hash: Option<BalanceAccountGuidHash>,
+    expected_fee_amount: Option<u64>,
 ) {
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_op_rent = rent.minimum_balance(MultisigOp::LEN);
@@ -605,6 +628,8 @@ pub async fn account_settings_update(
                 context.balance_account_guid_hash,
                 whitelist_status,
                 dapps_enabled,
+                fee_amount,
+                fee_account_guid_hash,
             ),
         ],
         Some(&context.pt_context.payer.pubkey()),
@@ -670,8 +695,15 @@ pub async fn account_settings_update(
     );
     assert_eq!(multisig_op.initiator, context.approvers[0].pubkey());
     assert_eq!(multisig_op.rent_return, context.pt_context.payer.pubkey());
-    assert!(multisig_op.fee_account_guid_hash.is_none());
-    assert_eq!(multisig_op.fee_amount, 0);
+    if fee_account_guid_hash.is_some() {
+        assert_eq!(
+            multisig_op.fee_account_guid_hash.unwrap(),
+            fee_account_guid_hash.unwrap()
+        );
+    } else {
+        assert!(multisig_op.fee_account_guid_hash.is_none());
+    }
+    assert_eq!(multisig_op.fee_amount, fee_amount.unwrap_or(0));
 
     assert_eq!(
         multisig_op.params_hash.unwrap(),
@@ -681,7 +713,7 @@ pub async fn account_settings_update(
             whitelist_enabled: whitelist_status,
             dapps_enabled,
         }
-        .hash()
+        .hash(&multisig_op)
     );
 
     approve_or_deny_n_of_n_multisig_op(
@@ -697,6 +729,9 @@ pub async fn account_settings_update(
     .await;
 
     // finalize the multisig op
+    let fee_account_maybe: Option<Pubkey> = fee_account_guid_hash.map(|guid_hash| {
+        BalanceAccount::find_address(&context.wallet_guid_hash, &guid_hash, &context.program_id).0
+    });
     let finalize_transaction = Transaction::new_signed_with_payer(
         &[finalize_account_settings_update(
             &context.program_id,
@@ -706,6 +741,7 @@ pub async fn account_settings_update(
             context.balance_account_guid_hash,
             whitelist_status,
             dapps_enabled,
+            fee_account_maybe.as_ref(),
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -739,7 +775,8 @@ pub async fn account_settings_update(
         .await
         .unwrap()
         .is_none());
-    // and that the remaining balance went to the rent collector (less the 5000 in fees for the finalize)
+    // and that the remaining balance (+ the fee if any) went to the rent collector
+    // (less the 5000 in fees for the finalize)
     let ending_rent_collector_balance = context
         .pt_context
         .banks_client
@@ -747,7 +784,10 @@ pub async fn account_settings_update(
         .await
         .unwrap();
     assert_eq!(
-        starting_rent_collector_balance + op_account_balance - 5000,
+        starting_rent_collector_balance
+            + op_account_balance
+            + expected_fee_amount.unwrap_or(fee_amount.unwrap_or(0))
+            - 5000,
         ending_rent_collector_balance
     );
 }
@@ -790,6 +830,7 @@ pub async fn finalize_dapp_book_update(
             &multisig_op_account,
             &test_context.payer.pubkey(),
             update,
+            None,
         ),
     )
     .await;
@@ -1287,7 +1328,7 @@ pub async fn setup_balance_account_tests(
             account_guid_hash: balance_account_guid_hash,
             creation_params: expected_creation_params.clone(),
         }
-        .hash()
+        .hash(&multisig_op)
     );
 
     BalanceAccountTestContext {
@@ -1445,6 +1486,7 @@ pub async fn finalize_balance_account_creation(context: &mut BalanceAccountTestC
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
             context.expected_creation_params.clone(),
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -1741,6 +1783,7 @@ pub async fn modify_address_book(
             &multisig_op_account,
             &context.pt_context.payer.pubkey(),
             update,
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -1808,6 +1851,7 @@ pub async fn modify_balance_account_address_whitelist(
                 &context.pt_context.payer.pubkey(),
                 context.balance_account_guid_hash,
                 update,
+                None,
             ),
         ],
         Some(&context.pt_context.payer.pubkey()),
@@ -1911,6 +1955,7 @@ pub async fn update_balance_account_name_hash(
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
             account_name_hash,
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -2014,6 +2059,7 @@ pub async fn update_balance_account_policy(
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
             update.clone(),
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -2205,7 +2251,10 @@ pub fn assert_initialized_multisig_op(
         expected_dispositions.to_set()
     );
     assert_eq!(multisig_op.operation_disposition, expected_op_disposition);
-    assert_eq!(multisig_op.params_hash.unwrap(), expected_params.hash());
+    assert_eq!(
+        multisig_op.params_hash.unwrap(),
+        expected_params.hash(&multisig_op)
+    );
     assert_eq!(multisig_op.initiator, *expected_initiator);
     assert_eq!(multisig_op.rent_return, *rent_return);
     assert!(multisig_op.fee_account_guid_hash.is_none());
@@ -2356,6 +2405,7 @@ pub async fn process_wrap(
                 &context.balance_account_guid_hash,
                 amount,
                 WrapDirection::WRAP,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[&context.pt_context.payer],
@@ -2432,6 +2482,7 @@ pub async fn process_unwrapping(
                 &context.balance_account_guid_hash,
                 unwrap_amount,
                 WrapDirection::UNWRAP,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[&context.pt_context.payer],
@@ -2717,6 +2768,7 @@ pub async fn create_balance_account(
             &context.payer.pubkey(),
             balance_account_guid_hash,
             creation_params.clone(),
+            None,
         )],
         Some(&context.payer.pubkey()),
         &[&context.payer],

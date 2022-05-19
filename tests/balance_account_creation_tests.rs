@@ -182,6 +182,7 @@ async fn test_balance_account_creation_not_signed_by_rent_collector() {
         &rent_collector.pubkey(),
         context.balance_account_guid_hash,
         context.expected_creation_params,
+        None,
     );
     instruction.accounts[2].is_signer = false;
 
@@ -239,6 +240,7 @@ async fn test_balance_account_creation_incorrect_hash() {
             &context.pt_context.payer.pubkey(),
             wrong_guid_hash,
             context.expected_creation_params.clone(),
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],
@@ -266,6 +268,7 @@ async fn test_balance_account_creation_incorrect_hash() {
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
             altered_creation_params.clone(),
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],

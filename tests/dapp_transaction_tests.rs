@@ -1,6 +1,7 @@
 #![cfg(feature = "test-bpf")]
 
 use std::borrow::BorrowMut;
+use std::option::Option::None;
 
 use bitvec::macros::internal::funty::Fundamental;
 use solana_program::hash::{hash, Hash};
@@ -86,6 +87,9 @@ async fn setup_dapp_test() -> DAppTest {
         &mut context,
         Some(BooleanSetting::Off),
         Some(BooleanSetting::On),
+        None,
+        None,
+        None,
         None,
     )
     .await;
@@ -218,6 +222,7 @@ async fn test_dapp_transaction_simulation() {
                     &context.balance_account_guid_hash,
                     &dapp_test.params_hash,
                     &dapp_test.inner_instructions,
+                    None,
                 )],
                 Some(&context.pt_context.payer.pubkey()),
                 &[
@@ -281,6 +286,7 @@ async fn test_dapp_transaction_bad_signature() {
                     &context.balance_account_guid_hash,
                     &hash(&[0]),
                     &dapp_test.inner_instructions,
+                    None,
                 )],
                 Some(&context.pt_context.payer.pubkey()),
                 &[
@@ -342,6 +348,7 @@ async fn test_dapp_transaction() {
                 &context.balance_account_guid_hash,
                 &dapp_test.params_hash,
                 &dapp_test.inner_instructions,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[
@@ -413,6 +420,7 @@ async fn test_dapp_transaction_denied() {
                 &context.balance_account_guid_hash,
                 &dapp_test.params_hash,
                 &dapp_test.inner_instructions,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[
@@ -454,7 +462,16 @@ async fn test_dapp_transaction_with_spl_transfers() {
     let (mut context, balance_account) =
         utils::setup_balance_account_tests_and_finalize(Some(120000)).await;
 
-    account_settings_update(&mut context, None, Some(BooleanSetting::On), None).await;
+    account_settings_update(
+        &mut context,
+        None,
+        Some(BooleanSetting::On),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     let rent = context.pt_context.banks_client.get_rent().await.unwrap();
     let multisig_op_account_rent = rent.minimum_balance(MultisigOp::LEN);
@@ -596,6 +613,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
                     &context.balance_account_guid_hash,
                     &Hash::new_unique(), // doesn't matter
                     &inner_instructions,
+                    None,
                 )],
                 Some(&context.pt_context.payer.pubkey()),
                 &[&context.pt_context.payer, &mint, &mint_authority],
@@ -650,6 +668,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
                     &context.balance_account_guid_hash,
                     &multisig_data.hash().unwrap(),
                     &inner_instructions,
+                    None,
                 )],
                 Some(&context.pt_context.payer.pubkey()),
                 &[&context.pt_context.payer, &mint, &mint_authority],
@@ -741,6 +760,9 @@ async fn test_dapp_transaction_unwhitelisted() {
         Some(BooleanSetting::On),
         Some(BooleanSetting::On),
         None,
+        None,
+        None,
+        None,
     )
     .await;
 
@@ -818,6 +840,9 @@ async fn test_dapp_transaction_whitelisted() {
         Some(BooleanSetting::On),
         Some(BooleanSetting::On),
         None,
+        None,
+        None,
+        None,
     )
     .await;
 
@@ -885,6 +910,9 @@ async fn test_supply_instruction_errors() {
         &mut context,
         Some(BooleanSetting::Off),
         Some(BooleanSetting::On),
+        None,
+        None,
+        None,
         None,
     )
     .await;
@@ -1040,6 +1068,9 @@ async fn test_multisig_op_version_mismatch() {
         &mut context,
         Some(BooleanSetting::Off),
         Some(BooleanSetting::On),
+        None,
+        None,
+        None,
         None,
     )
     .await;
@@ -1273,6 +1304,7 @@ async fn test_multisig_op_version_mismatch() {
                 &context.balance_account_guid_hash,
                 &params_hash,
                 &inner_instructions,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[

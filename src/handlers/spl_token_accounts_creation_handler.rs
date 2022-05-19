@@ -1,4 +1,5 @@
 use crate::handlers::utils::{next_signer_account_info, next_wallet_account_info};
+use crate::model::multisig_op::MultisigOp;
 use crate::{
     error::WalletError,
     handlers::utils::{
@@ -164,7 +165,7 @@ pub fn finalize(
     // For each GUID hash, we expect a BalanceAccount account and an associated
     // token account, so the max number of AccountInfos, less BASE_ACCOUNTS_LEN,
     // is 2 * account_guid_hashes.len().
-    let expected_account_count = BASE_ACCOUNTS_LEN
+    let mut expected_account_count = BASE_ACCOUNTS_LEN
         .checked_add(
             n_guid_hashes
                 .checked_mul(2)
@@ -173,6 +174,14 @@ pub fn finalize(
         .ok_or(WalletError::AmountOverflow)?;
 
     let accounts_vec = accounts.to_vec();
+
+    // if a fee account guid hash was set in the init, there should be a fee account info
+    let multisig_op = MultisigOp::unpack_from_slice(&multisig_op_account_info.data.borrow())?;
+    if multisig_op.fee_account_guid_hash.is_some() {
+        expected_account_count = expected_account_count
+            .checked_add(1)
+            .ok_or(WalletError::AmountOverflow)?;
+    }
 
     if accounts_vec.len() != expected_account_count {
         msg!(
@@ -203,6 +212,12 @@ pub fn finalize(
         .get(index..offset)
         .ok_or(ProgramError::NotEnoughAccountKeys)?;
 
+    let fee_account_info_maybe = if multisig_op.fee_account_guid_hash.is_some() {
+        Some(accounts_vec.last().unwrap())
+    } else {
+        None
+    };
+
     let wallet_guid_hash =
         &Wallet::wallet_guid_hash_from_slice(&wallet_account_info.data.borrow())?;
 
@@ -227,15 +242,27 @@ pub fn finalize(
     }
 
     // ensure that the payer BalanceAccount has sufficient funds to cover the
-    // creation of the new associated token accounts.
+    // creation of the new associated token accounts, including the fee amount
+    // if the payer account matches the fee account
     let rent = Rent::get()?;
     let required_lamports = rent
         .minimum_balance(SPLAccount::LEN)
         .checked_mul(new_associated_token_account_indices.len() as u64)
         .ok_or(WalletError::AmountOverflow)?;
+    let required_lamports_including_fee = if let Some(fee_account_info) = fee_account_info_maybe {
+        if *payer_balance_account_info.key == *fee_account_info.key {
+            required_lamports
+                .checked_add(multisig_op.fee_amount)
+                .ok_or(WalletError::AmountOverflow)?
+        } else {
+            required_lamports
+        }
+    } else {
+        required_lamports
+    };
     let balance_floor = rent.minimum_balance(0); // we don't want balance account lamports to go below min rent exempt amount
     let required_lamports_plus_balance_floor = balance_floor
-        .checked_add(required_lamports)
+        .checked_add(required_lamports_including_fee)
         .ok_or(WalletError::AmountOverflow)?;
 
     if payer_balance_account_info.lamports() < required_lamports_plus_balance_floor {
@@ -250,6 +277,9 @@ pub fn finalize(
         &multisig_op_account_info,
         &rent_return_account_info,
         clock,
+        fee_account_info_maybe,
+        wallet_guid_hash,
+        program_id,
         MultisigOpParams::CreateSPLTokenAccounts {
             wallet_address: *wallet_account_info.key,
             payer_account_guid_hash: *payer_account_guid_hash,

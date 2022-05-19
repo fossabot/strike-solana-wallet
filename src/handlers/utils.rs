@@ -1,10 +1,7 @@
-use crate::error::WalletError;
-use crate::model::balance_account::{BalanceAccount, BalanceAccountGuidHash};
-use crate::model::multisig_op::{
-    ApprovalDisposition, MultisigOp, MultisigOpParams, OperationDisposition,
-};
-use crate::model::wallet::{Wallet, WalletGuidHash};
-use crate::version::{Versioned, VERSION};
+use std::cmp::max;
+use std::slice::Iter;
+use std::time::Duration;
+
 use solana_program::rent::Rent;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -20,8 +17,14 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use spl_associated_token_account;
-use std::slice::Iter;
-use std::time::Duration;
+
+use crate::error::WalletError;
+use crate::model::balance_account::{BalanceAccount, BalanceAccountGuidHash};
+use crate::model::multisig_op::{
+    ApprovalDisposition, MultisigOp, MultisigOpParams, OperationDisposition,
+};
+use crate::model::wallet::{Wallet, WalletGuidHash};
+use crate::version::{Versioned, VERSION};
 
 pub fn collect_remaining_balance(from: &AccountInfo, to: &AccountInfo) -> ProgramResult {
     // this moves the lamports back to the fee payer.
@@ -165,10 +168,13 @@ pub fn log_op_disposition(disposition: OperationDisposition) {
     msg!("OperationDisposition: [{}]", disposition.to_u8());
 }
 
-pub fn finalize_multisig_op<F>(
+pub fn finalize_multisig_op<'a, F>(
     multisig_op_account_info: &AccountInfo,
-    rent_return_account_info: &AccountInfo,
+    rent_return_account_info: &AccountInfo<'a>,
     clock: Clock,
+    fee_account_info_maybe: Option<&AccountInfo<'a>>,
+    wallet_guid_hash: &WalletGuidHash,
+    program_id: &Pubkey,
     expected_params: MultisigOpParams,
     mut on_op_approved: F,
 ) -> ProgramResult
@@ -182,8 +188,54 @@ where
             return Err(WalletError::IncorrectRentReturnAccount.into());
         }
 
-        if multisig_op.approved(expected_params.hash(), &clock, None)? {
-            on_op_approved()?
+        if multisig_op.approved(expected_params.hash(&multisig_op), &clock, None)? {
+            on_op_approved()?;
+            if multisig_op.fee_amount > 0 {
+                // attempt to collect fees
+                if let Some(guid_hash) = multisig_op.fee_account_guid_hash {
+                    if let Some(fee_account_info) = fee_account_info_maybe {
+                        let fee_collection = || -> Result<(), ProgramError> {
+                            let bump_seed = validate_balance_account_and_get_seed(
+                                fee_account_info,
+                                wallet_guid_hash,
+                                &guid_hash,
+                                program_id,
+                            )?;
+                            // this will transfer as much of the fee as possible without taking the
+                            // fee account below the minimum balance
+                            let rent = Rent::get()?;
+                            let balance_floor = rent.minimum_balance(0);
+                            let final_from_lamports = max(
+                                balance_floor,
+                                fee_account_info
+                                    .lamports()
+                                    .saturating_sub(multisig_op.fee_amount),
+                            );
+                            let amount = fee_account_info
+                                .lamports()
+                                .saturating_sub(final_from_lamports);
+
+                            invoke_signed(
+                                &system_instruction::transfer(
+                                    fee_account_info.key,
+                                    rent_return_account_info.key,
+                                    amount,
+                                ),
+                                &[fee_account_info.clone(), rent_return_account_info.clone()],
+                                &[&[
+                                    wallet_guid_hash.to_bytes(),
+                                    guid_hash.to_bytes(),
+                                    &[bump_seed],
+                                ]],
+                            )?;
+                            Ok(())
+                        };
+                        if let Err(err) = fee_collection() {
+                            msg!("Unable to collect fees: {:?}", err);
+                        }
+                    }
+                }
+            }
         }
     } else {
         log_op_disposition(OperationDisposition::EXPIRED);

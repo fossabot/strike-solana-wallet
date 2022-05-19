@@ -331,6 +331,7 @@ async fn test_balance_account_policy_update_is_denied() {
             &context.pt_context.payer.pubkey(),
             context.balance_account_guid_hash,
             update,
+            None,
         )],
         Some(&context.pt_context.payer.pubkey()),
         &[&context.pt_context.payer],

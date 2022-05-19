@@ -107,6 +107,8 @@ pub fn finalize(
     let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
     let wrapped_sol_account_info = next_account_info(accounts_iter)?;
+    let _spl_token_program_info = next_account_info(accounts_iter)?;
+    let fee_account_info_maybe = accounts_iter.next();
 
     if system_program_account_info.key != &system_program::id() {
         return Err(WalletError::AccountNotRecognized.into());
@@ -119,6 +121,9 @@ pub fn finalize(
         &multisig_op_account_info,
         &rent_return_account_info,
         clock,
+        fee_account_info_maybe,
+        wallet_guid_hash,
+        program_id,
         MultisigOpParams::Wrap {
             wallet_address: *wallet_account_info.key,
             account_guid_hash: *account_guid_hash,

@@ -67,11 +67,18 @@ pub fn finalize(
     let wallet_account_info = next_wallet_account_info(accounts_iter, program_id)?;
     let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
+    let fee_account_info_maybe = accounts_iter.next();
+
+    let wallet_guid_hash =
+        &Wallet::wallet_guid_hash_from_slice(&wallet_account_info.data.borrow())?;
 
     finalize_multisig_op(
         &multisig_op_account_info,
         &rent_return_account_info,
         clock,
+        fee_account_info_maybe,
+        wallet_guid_hash,
+        program_id,
         MultisigOpParams::UpdateBalanceAccountName {
             wallet_address: *wallet_account_info.key,
             account_guid_hash: *account_guid_hash,

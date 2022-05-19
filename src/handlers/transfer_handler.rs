@@ -149,6 +149,28 @@ pub fn finalize(
     let clock = get_clock_from_next_account(accounts_iter)?;
 
     let is_spl = token_mint.to_bytes() != [0; PUBKEY_BYTES];
+    let source_token_account = if is_spl {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+    let destination_token_account = if is_spl {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+    let spl_token_program = if is_spl {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+    let token_mint_authority = if is_spl {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
+    let fee_account_info_maybe = accounts_iter.next();
 
     if system_program_account.key != &system_program::id() {
         return Err(WalletError::AccountNotRecognized.into());
@@ -161,6 +183,9 @@ pub fn finalize(
         &multisig_op_account_info,
         &rent_return_account_info,
         clock,
+        fee_account_info_maybe,
+        &Wallet::wallet_guid_hash_from_slice(&wallet_account_info.data.borrow())?,
+        program_id,
         MultisigOpParams::Transfer {
             wallet_address: *wallet_account_info.key,
             account_guid_hash: *account_guid_hash,
@@ -176,14 +201,13 @@ pub fn finalize(
                 program_id,
             )?;
             if is_spl {
-                let source_token_account = next_account_info(accounts_iter)?;
                 let source_token_account_key =
                     get_associated_token_address(source_account.key, &token_mint);
-                if *source_token_account.key != source_token_account_key {
+                if *source_token_account.unwrap().key != source_token_account_key {
                     return Err(WalletError::InvalidSourceTokenAccount.into());
                 }
                 let source_token_account_data =
-                    SPLAccount::unpack(&source_token_account.data.borrow())?;
+                    SPLAccount::unpack(&source_token_account.unwrap().data.borrow())?;
                 if source_token_account_data.amount < amount {
                     msg!(
                         "Source token account only has {} tokens of {} requested",
@@ -192,15 +216,11 @@ pub fn finalize(
                     );
                     return Err(WalletError::InsufficientBalance.into());
                 }
-                let destination_token_account = next_account_info(accounts_iter)?;
                 let destination_token_account_key =
                     get_associated_token_address(&destination_account.key, &token_mint);
-                if *destination_token_account.key != destination_token_account_key {
+                if *destination_token_account.unwrap().key != destination_token_account_key {
                     return Err(WalletError::InvalidDestinationTokenAccount.into());
                 }
-
-                let spl_token_program = next_account_info(accounts_iter)?;
-                let token_mint_authority = next_account_info(accounts_iter)?;
 
                 invoke_signed(
                     &spl_instruction::transfer(
@@ -212,12 +232,12 @@ pub fn finalize(
                         amount,
                     )?,
                     &[
-                        source_token_account.clone(),
-                        destination_token_account.clone(),
+                        source_token_account.unwrap().clone(),
+                        destination_token_account.unwrap().clone(),
                         source_account.clone(),
                         destination_account.clone(),
-                        token_mint_authority.clone(),
-                        spl_token_program.clone(),
+                        token_mint_authority.unwrap().clone(),
+                        spl_token_program.unwrap().clone(),
                     ],
                     &[&[
                         Wallet::wallet_guid_hash_from_slice(&wallet_account_info.data.borrow())?

@@ -186,7 +186,7 @@ fn rent_required_for_token_accounts(context: &TestContext, accounts_count: usize
 
 /// Perform finalize. The `enable_spl_token` fn does this automatically if its
 /// `finalize` param is set. Otherwise, this can be used to when specifically
-/// targetting the finalize method for tests.
+/// targeting the finalize method for tests.
 pub async fn finalize_enable_spl_token(
     context: &mut TestContext,
     wallet_keypair: &Keypair,
@@ -222,6 +222,7 @@ pub async fn finalize_enable_spl_token(
                 associated_token_addresses,
                 payer_balance_account_guid_hash,
                 balance_account_guid_hashes,
+                None,
             ),
         ],
         Some(&context.payer.pubkey()),
