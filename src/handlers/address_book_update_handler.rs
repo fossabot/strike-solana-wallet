@@ -1,6 +1,7 @@
 use crate::handlers::utils::{
     finalize_multisig_op, get_clock_from_next_account, next_program_account_info,
     next_signer_account_info, next_wallet_account_info, start_multisig_config_op,
+    FeeCollectionInfo,
 };
 use crate::instruction::AddressBookUpdate;
 use crate::model::balance_account::BalanceAccountGuidHash;
@@ -61,11 +62,13 @@ pub fn finalize(
 
     finalize_multisig_op(
         &multisig_op_account_info,
-        &rent_return_account_info,
+        FeeCollectionInfo {
+            rent_return_account_info,
+            fee_account_info_maybe,
+            wallet_guid_hash,
+            program_id,
+        },
         clock,
-        fee_account_info_maybe,
-        wallet_guid_hash,
-        program_id,
         MultisigOpParams::AddressBookUpdate {
             wallet_address: *wallet_account_info.key,
             update: update.clone(),

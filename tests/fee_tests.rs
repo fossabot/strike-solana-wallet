@@ -5,7 +5,6 @@ mod common;
 pub use common::instructions::*;
 pub use common::utils::*;
 
-use crate::common::utils;
 use solana_program::system_instruction;
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
@@ -14,9 +13,7 @@ use std::option::Option::None;
 use std::time::Duration;
 use strike_wallet::instruction::InitialWalletConfig;
 use strike_wallet::model::balance_account::{BalanceAccount, BalanceAccountGuidHash};
-use strike_wallet::model::multisig_op::{
-    ApprovalDisposition, BooleanSetting, OperationDisposition, SlotUpdateType,
-};
+use strike_wallet::model::multisig_op::{BooleanSetting, SlotUpdateType};
 use strike_wallet::model::wallet::Signers;
 use strike_wallet::utils::SlotId;
 use {solana_program_test::tokio, solana_sdk::signature::Keypair};
@@ -59,20 +56,7 @@ async fn test_fee_info_in_multisig_op() {
 
 #[tokio::test]
 async fn test_fee_collection() {
-    let mut context = setup_balance_account_tests(None, false).await;
-
-    approve_or_deny_n_of_n_multisig_op(
-        context.pt_context.banks_client.borrow_mut(),
-        &context.program_id,
-        &context.multisig_op_account.pubkey(),
-        vec![&context.approvers[0], &context.approvers[1]],
-        &context.pt_context.payer,
-        context.pt_context.last_blockhash,
-        ApprovalDisposition::APPROVE,
-        OperationDisposition::APPROVED,
-    )
-    .await;
-    utils::finalize_balance_account_creation(context.borrow_mut()).await;
+    let mut context = setup_fee_tests().await;
 
     // transfer some SOL into the balance account to pay the fee
     let starting_balance: u64 = 10_000_000;

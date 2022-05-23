@@ -2860,3 +2860,21 @@ pub async fn create_program_buffer(
             .unwrap()
     }
 }
+
+pub async fn setup_fee_tests() -> BalanceAccountTestContext {
+    let mut context = setup_balance_account_tests(None, false).await;
+
+    approve_or_deny_n_of_n_multisig_op(
+        context.pt_context.banks_client.borrow_mut(),
+        &context.program_id,
+        &context.multisig_op_account.pubkey(),
+        vec![&context.approvers[0], &context.approvers[1]],
+        &context.pt_context.payer,
+        context.pt_context.last_blockhash,
+        ApprovalDisposition::APPROVE,
+        OperationDisposition::APPROVED,
+    )
+    .await;
+    finalize_balance_account_creation(context.borrow_mut()).await;
+    context
+}

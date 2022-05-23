@@ -1,4 +1,6 @@
-use crate::handlers::utils::{next_signer_account_info, next_wallet_account_info};
+use crate::handlers::utils::{
+    next_signer_account_info, next_wallet_account_info, FeeCollectionInfo,
+};
 use crate::model::multisig_op::MultisigOp;
 use crate::{
     error::WalletError,
@@ -275,11 +277,13 @@ pub fn finalize(
 
     finalize_multisig_op(
         &multisig_op_account_info,
-        &rent_return_account_info,
+        FeeCollectionInfo {
+            rent_return_account_info,
+            fee_account_info_maybe,
+            wallet_guid_hash,
+            program_id,
+        },
         clock,
-        fee_account_info_maybe,
-        wallet_guid_hash,
-        program_id,
         MultisigOpParams::CreateSPLTokenAccounts {
             wallet_address: *wallet_account_info.key,
             payer_account_guid_hash: *payer_account_guid_hash,

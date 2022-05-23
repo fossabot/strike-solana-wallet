@@ -26,6 +26,13 @@ use crate::model::multisig_op::{
 use crate::model::wallet::{Wallet, WalletGuidHash};
 use crate::version::{Versioned, VERSION};
 
+pub struct FeeCollectionInfo<'a, 'b> {
+    pub rent_return_account_info: &'a AccountInfo<'b>,
+    pub fee_account_info_maybe: Option<&'a AccountInfo<'b>>,
+    pub wallet_guid_hash: &'a WalletGuidHash,
+    pub program_id: &'a Pubkey,
+}
+
 pub fn collect_remaining_balance(from: &AccountInfo, to: &AccountInfo) -> ProgramResult {
     // this moves the lamports back to the fee payer.
     **to.lamports.borrow_mut() = to
@@ -170,11 +177,8 @@ pub fn log_op_disposition(disposition: OperationDisposition) {
 
 pub fn finalize_multisig_op<'a, F>(
     multisig_op_account_info: &AccountInfo,
-    rent_return_account_info: &AccountInfo<'a>,
+    fee_collection_info: FeeCollectionInfo,
     clock: Clock,
-    fee_account_info_maybe: Option<&AccountInfo<'a>>,
-    wallet_guid_hash: &WalletGuidHash,
-    program_id: &Pubkey,
     expected_params: MultisigOpParams,
     mut on_op_approved: F,
 ) -> ProgramResult
@@ -184,7 +188,7 @@ where
     if MultisigOp::version_from_slice(&multisig_op_account_info.data.borrow())? == VERSION {
         let multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
 
-        if *rent_return_account_info.key != multisig_op.rent_return {
+        if *fee_collection_info.rent_return_account_info.key != multisig_op.rent_return {
             return Err(WalletError::IncorrectRentReturnAccount.into());
         }
 
@@ -193,13 +197,13 @@ where
             if multisig_op.fee_amount > 0 {
                 // attempt to collect fees
                 if let Some(guid_hash) = multisig_op.fee_account_guid_hash {
-                    if let Some(fee_account_info) = fee_account_info_maybe {
+                    if let Some(fee_account_info) = fee_collection_info.fee_account_info_maybe {
                         let fee_collection = || -> Result<(), ProgramError> {
                             let bump_seed = validate_balance_account_and_get_seed(
                                 fee_account_info,
-                                wallet_guid_hash,
+                                fee_collection_info.wallet_guid_hash,
                                 &guid_hash,
-                                program_id,
+                                fee_collection_info.program_id,
                             )?;
                             // this will transfer as much of the fee as possible without taking the
                             // fee account below the minimum balance
@@ -218,12 +222,15 @@ where
                             invoke_signed(
                                 &system_instruction::transfer(
                                     fee_account_info.key,
-                                    rent_return_account_info.key,
+                                    fee_collection_info.rent_return_account_info.key,
                                     amount,
                                 ),
-                                &[fee_account_info.clone(), rent_return_account_info.clone()],
+                                &[
+                                    fee_account_info.clone(),
+                                    fee_collection_info.rent_return_account_info.clone(),
+                                ],
                                 &[&[
-                                    wallet_guid_hash.to_bytes(),
+                                    fee_collection_info.wallet_guid_hash.to_bytes(),
                                     guid_hash.to_bytes(),
                                     &[bump_seed],
                                 ]],
@@ -241,7 +248,10 @@ where
         log_op_disposition(OperationDisposition::EXPIRED);
     }
 
-    collect_remaining_balance(&multisig_op_account_info, &rent_return_account_info)?;
+    collect_remaining_balance(
+        &multisig_op_account_info,
+        fee_collection_info.rent_return_account_info,
+    )?;
 
     Ok(())
 }
