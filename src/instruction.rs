@@ -174,7 +174,6 @@ pub enum ProgramInstruction {
     /// 7. `[]` The SPL token account
     /// 8. `[writable]` The fee account, if fee_account_guid_hash was set in the init
     /// 9. `[]` The system program (only needed if fee_account_guid_hash was set in the init)
-    /// 10. `[]` The system program (only needed if fee_account_guid_hash was set in the init)
     FinalizeWrapUnwrap {
         account_guid_hash: BalanceAccountGuidHash,
         amount: u64,

@@ -146,6 +146,9 @@ pub enum WalletError {
     /// Incorrect Rent Return Account
     #[error("Incorrect Rent Return Account")]
     IncorrectRentReturnAccount,
+    /// Incorrect Initiator Account
+    #[error("Incorrect Initiator Account")]
+    IncorrectInitiatorAccount,
 }
 
 impl From<WalletError> for ProgramError {

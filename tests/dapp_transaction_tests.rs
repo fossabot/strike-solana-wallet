@@ -189,6 +189,19 @@ async fn setup_dapp_test() -> DAppTest {
             .unwrap()
     }
 
+    let multisig_op = MultisigOp::unpack_from_slice(
+        context
+            .pt_context
+            .banks_client
+            .get_account(multisig_op_account.pubkey())
+            .await
+            .unwrap()
+            .unwrap()
+            .data
+            .as_slice(),
+    )
+    .unwrap();
+
     DAppTest {
         context,
         balance_account,
@@ -196,7 +209,7 @@ async fn setup_dapp_test() -> DAppTest {
         multisig_data_account,
         inner_instructions,
         inner_multisig_op_account,
-        params_hash: multisig_data.hash().unwrap(),
+        params_hash: multisig_data.hash(&multisig_op).unwrap(),
     }
 }
 
@@ -652,6 +665,19 @@ async fn test_dapp_transaction_with_spl_transfers() {
             .unwrap()
     }
 
+    let multisig_op = MultisigOp::unpack_from_slice(
+        context
+            .pt_context
+            .banks_client
+            .get_account(multisig_op_account.pubkey())
+            .await
+            .unwrap()
+            .unwrap()
+            .data
+            .as_slice(),
+    )
+    .unwrap();
+
     // attempting to finalize before approval should result in a transaction simulation
     assert_eq!(
         context
@@ -666,7 +692,7 @@ async fn test_dapp_transaction_with_spl_transfers() {
                     &balance_account,
                     &context.pt_context.payer.pubkey(),
                     &context.balance_account_guid_hash,
-                    &multisig_data.hash().unwrap(),
+                    &multisig_data.hash(&multisig_op).unwrap(),
                     &inner_instructions,
                     None,
                 )],

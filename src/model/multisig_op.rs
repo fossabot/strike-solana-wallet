@@ -704,6 +704,7 @@ impl MultisigOpParams {
             1 + PUBKEY_BYTES + HASH_LEN + update_bytes.len() + common_data_bytes.len(),
         );
         bytes.push(type_code);
+        bytes.extend_from_slice(common_data_bytes.as_slice());
         bytes.extend_from_slice(&wallet_address.to_bytes());
         bytes.extend_from_slice(account_guid_hash.to_bytes());
         bytes.extend_from_slice(update_bytes.as_slice());
@@ -711,17 +712,7 @@ impl MultisigOpParams {
     }
 
     pub fn hash(&self, multisig_op: &MultisigOp) -> Hash {
-        const COMMON_DATA_LEN: usize = PUBKEY_BYTES + PUBKEY_BYTES + 8 + HASH_LEN;
-        let mut common_data_bytes: Vec<u8> = Vec::with_capacity(COMMON_DATA_LEN);
-        common_data_bytes.extend_from_slice(multisig_op.initiator.as_ref());
-        common_data_bytes.extend_from_slice(multisig_op.rent_return.as_ref());
-        common_data_bytes.put_u64(multisig_op.fee_amount);
-        common_data_bytes.extend_from_slice(
-            multisig_op
-                .fee_account_guid_hash
-                .unwrap_or(BalanceAccountGuidHash::zero())
-                .to_bytes(),
-        );
+        let common_data_bytes = common_data(multisig_op);
         match self {
             MultisigOpParams::Transfer {
                 wallet_address,
@@ -963,4 +954,20 @@ impl MultisigOpParams {
             }
         }
     }
+}
+
+const COMMON_DATA_LEN: usize = PUBKEY_BYTES + PUBKEY_BYTES + 8 + HASH_LEN;
+
+pub fn common_data(multisig_op: &MultisigOp) -> Vec<u8> {
+    let mut common_data_bytes: Vec<u8> = Vec::with_capacity(COMMON_DATA_LEN);
+    common_data_bytes.extend_from_slice(multisig_op.initiator.as_ref());
+    common_data_bytes.extend_from_slice(multisig_op.rent_return.as_ref());
+    common_data_bytes.put_u64(multisig_op.fee_amount);
+    common_data_bytes.extend_from_slice(
+        multisig_op
+            .fee_account_guid_hash
+            .unwrap_or(BalanceAccountGuidHash::zero())
+            .to_bytes(),
+    );
+    return common_data_bytes;
 }

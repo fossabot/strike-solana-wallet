@@ -107,7 +107,10 @@ pub fn supply_instructions(
         return Err(WalletError::OperationVersionMismatch.into());
     }
 
-    // TODO - once we are storing the initiator in the multisig op (PRIME-3999), verify that the supplied one matches
+    let mut multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
+    if multisig_op.initiator != *initiator_account_info.key {
+        return Err(WalletError::IncorrectInitiatorAccount.into());
+    }
 
     let params_hash = {
         let mut multisig_data =
@@ -123,7 +126,7 @@ pub fn supply_instructions(
         }
 
         let params_hash = if multisig_data.all_instructions_supplied() {
-            Some(multisig_data.hash()?)
+            Some(multisig_data.hash(&multisig_op)?)
         } else {
             None
         };
@@ -136,10 +139,7 @@ pub fn supply_instructions(
         params_hash
     };
 
-    // separate block so memory from unpacking the data gets reused
     if let Some(_) = params_hash {
-        let mut multisig_op = MultisigOp::unpack(&multisig_op_account_info.data.borrow())?;
-
         multisig_op.params_hash = params_hash;
 
         // record approval
@@ -268,7 +268,8 @@ pub fn finalize(
         let instructions = multisig_data.instructions()?;
         let (is_approved, is_final) = {
             const NOT_FINAL: u32 = WalletError::TransferDispositionNotFinal as u32;
-            match multisig_op.approved(multisig_data.hash()?, &clock, Some(params_hash)) {
+            match multisig_op.approved(multisig_data.hash(&multisig_op)?, &clock, Some(params_hash))
+            {
                 Ok(a) => (a, true),
                 Err(ProgramError::Custom(NOT_FINAL)) => (false, false),
                 Err(e) => return Err(e),
