@@ -675,6 +675,9 @@ pub enum MultisigOpParams {
         account_guid_hash: BalanceAccountGuidHash,
         update: BalanceAccountAddressWhitelistUpdate,
     },
+    SignData {
+        data: Vec<u8>,
+    },
 }
 
 impl MultisigOpParams {
@@ -952,6 +955,7 @@ impl MultisigOpParams {
                     update_bytes,
                 )
             }
+            MultisigOpParams::SignData { ref data } => hash(data.as_slice()),
         }
     }
 }
