@@ -32,7 +32,10 @@ pub fn init(
         &multisig_op_account_info,
         &wallet,
         clock,
-        MultisigOpParams::SignData { data: data.clone() },
+        MultisigOpParams::SignData {
+            wallet_address: *wallet_account_info.key,
+            data: data.clone(),
+        },
         *initiator_account_info.key,
         *rent_return_account.key,
         fee_amount,
@@ -62,7 +65,10 @@ pub fn finalize(program_id: &Pubkey, accounts: &[AccountInfo], data: &Vec<u8>) -
             program_id,
         },
         clock,
-        MultisigOpParams::SignData { data: data.clone() },
+        MultisigOpParams::SignData {
+            wallet_address: *wallet_account_info.key,
+            data: data.clone(),
+        },
         || -> ProgramResult { Ok(()) },
     )?;
 
