@@ -108,6 +108,7 @@ pub fn finalize(
     let rent_return_account_info = next_signer_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
     let wrapped_sol_account_info = next_account_info(accounts_iter)?;
+    // spl_token_program_info account
     let _ = next_account_info(accounts_iter)?;
     let fee_account_info_maybe = accounts_iter.next();
 

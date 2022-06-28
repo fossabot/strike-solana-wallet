@@ -146,6 +146,7 @@ pub fn finalize(
     let payer_balance_account_info = next_account_info(accounts_iter)?;
     let clock = get_clock_from_next_account(accounts_iter)?;
     let system_program_account_info = next_account_info(accounts_iter)?;
+    // spl_associated_token_account_info account
     let _ = next_account_info(accounts_iter)?;
     let spl_token_program_account_info = next_account_info(accounts_iter)?;
     let rent_account_info = next_account_info(accounts_iter)?;
