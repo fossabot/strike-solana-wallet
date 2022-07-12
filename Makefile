@@ -19,7 +19,7 @@ endif
 
 
 build: format
-	cargo build-bpf
+	cargo +bpf build-bpf
 
 analyze:
 	soteria -c -analyzeAll .
