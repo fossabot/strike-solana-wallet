@@ -73,6 +73,30 @@ pub fn init(
                 &[bump_seed],
             ]],
         )?;
+    } else if direction == WrapDirection::UNWRAP {
+        let temporary_unwrapping_account = next_account_info(accounts_iter)?;
+
+        let bump_seed = validate_balance_account_and_get_seed(
+            balance_account_info,
+            &wallet.wallet_guid_hash,
+            account_guid_hash,
+            program_id,
+        )?;
+
+        invoke_signed(
+            &spl_token::instruction::initialize_account2(
+                &spl_token::id(),
+                &temporary_unwrapping_account.key,
+                native_mint_account_info.key,
+                balance_account_info.key,
+            )?,
+            accounts,
+            &[&[
+                wallet.wallet_guid_hash.to_bytes(),
+                account_guid_hash.to_bytes(),
+                &[bump_seed],
+            ]],
+        )?;
     }
 
     start_multisig_transfer_op(
@@ -110,6 +134,18 @@ pub fn finalize(
     let wrapped_sol_account_info = next_account_info(accounts_iter)?;
     // spl_token_program_info account
     let _ = next_account_info(accounts_iter)?;
+    let native_mint_account_info = next_account_info(accounts_iter)?;
+    if *native_mint_account_info.key != spl_token::native_mint::id() {
+        msg!("Invalid native mint account set");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // spl_associated_token_program_info account
+    let _ = next_account_info(accounts_iter)?;
+    let temporary_unwrapping_account = if direction == WrapDirection::UNWRAP {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
     let fee_account_info_maybe = accounts_iter.next();
 
     if system_program_account_info.key != &system_program::id() {
@@ -158,6 +194,14 @@ pub fn finalize(
                     wrapped_sol_account_info.clone(),
                     amount,
                 )?;
+
+                invoke(
+                    &spl_token::instruction::sync_native(
+                        &spl_token::id(),
+                        &wrapped_sol_account_key,
+                    )?,
+                    &[wrapped_sol_account_info.clone()],
+                )?;
             } else {
                 let wrapped_sol_account_data =
                     SPLAccount::unpack(&wrapped_sol_account_info.data.borrow())?;
@@ -171,23 +215,21 @@ pub fn finalize(
                 }
 
                 // the only way to transfer lamports out of a token account is to close it, so we first
-                // close it and then transfer back whatever is remaining
-                let remaining = wrapped_sol_account_info
-                    .lamports()
-                    .checked_sub(amount)
-                    .ok_or(WalletError::AmountOverflow)?;
+                // transfer to the temporary token account, and then close that account
 
                 invoke_signed(
-                    &spl_token::instruction::close_account(
+                    &spl_token::instruction::transfer(
                         &spl_token::id(),
                         &wrapped_sol_account_info.key,
-                        &balance_account_info.key,
+                        &temporary_unwrapping_account.unwrap().key,
                         &balance_account_info.key,
                         &[],
+                        amount,
                     )?,
                     &[
                         wrapped_sol_account_info.clone(),
                         balance_account_info.clone(),
+                        temporary_unwrapping_account.unwrap().clone(),
                     ],
                     &[&[
                         wallet_guid_hash.to_bytes(),
@@ -196,20 +238,45 @@ pub fn finalize(
                     ]],
                 )?;
 
-                transfer_sol_checked(
-                    wallet_guid_hash,
-                    balance_account_info.clone(),
-                    account_guid_hash,
-                    bump_seed,
-                    system_program_account_info.clone(),
-                    wrapped_sol_account_info.clone(),
-                    remaining,
+                invoke_signed(
+                    &spl_token::instruction::close_account(
+                        &spl_token::id(),
+                        &temporary_unwrapping_account.unwrap().key,
+                        &balance_account_info.key,
+                        &balance_account_info.key,
+                        &[],
+                    )?,
+                    &[
+                        temporary_unwrapping_account.unwrap().clone(),
+                        balance_account_info.clone(),
+                    ],
+                    &[&[
+                        wallet_guid_hash.to_bytes(),
+                        account_guid_hash.to_bytes(),
+                        &[bump_seed],
+                    ]],
                 )?;
             }
-
-            invoke(
-                &spl_token::instruction::sync_native(&spl_token::id(), &wrapped_sol_account_key)?,
-                &[wrapped_sol_account_info.clone()],
+            Ok(())
+        },
+        || -> ProgramResult {
+            invoke_signed(
+                &spl_token::instruction::close_account(
+                    &spl_token::id(),
+                    &temporary_unwrapping_account.unwrap().key,
+                    &balance_account_info.key,
+                    &balance_account_info.key,
+                    &[],
+                )?,
+                &[
+                    temporary_unwrapping_account.unwrap().clone(),
+                    balance_account_info.clone(),
+                ],
+                &[&[
+                    wallet_guid_hash.to_bytes(),
+                    account_guid_hash.to_bytes(),
+                    &[bump_seed],
+                ]],
             )?;
             Ok(())
         },

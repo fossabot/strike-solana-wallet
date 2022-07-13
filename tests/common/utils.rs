@@ -2125,7 +2125,7 @@ pub async fn setup_spl_transfer_test(
                     6,
                 )
                 .unwrap(),
-                spl_associated_token_account::create_associated_token_account(
+                spl_associated_token_account::instruction::create_associated_token_account(
                     &context.pt_context.payer.pubkey(),
                     source_account,
                     &mint.pubkey(),
@@ -2349,6 +2349,8 @@ pub async fn process_wrap(
                     &context.balance_account_guid_hash,
                     amount,
                     WrapDirection::WRAP,
+                    None,
+                    token_account_rent,
                 ),
             ],
             Some(&context.pt_context.payer.pubkey()),
@@ -2406,6 +2408,7 @@ pub async fn process_wrap(
                 amount,
                 WrapDirection::WRAP,
                 None,
+                None,
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[&context.pt_context.payer],
@@ -2417,10 +2420,14 @@ pub async fn process_wrap(
 pub async fn process_unwrapping(
     context: &mut BalanceAccountTestContext,
     multisig_account_rent: u64,
+    token_account_rent: u64,
     balance_account: Pubkey,
     unwrap_amount: u64,
+    disposition: ApprovalDisposition,
 ) -> Result<(), BanksClientError> {
     let unwrap_multisig_op_account = Keypair::new();
+
+    let temporary_unwrapping_account = Keypair::new();
 
     context
         .pt_context
@@ -2434,6 +2441,13 @@ pub async fn process_unwrapping(
                     MultisigOp::LEN as u64,
                     &context.program_id,
                 ),
+                system_instruction::create_account(
+                    &context.pt_context.payer.pubkey(),
+                    &temporary_unwrapping_account.pubkey(),
+                    token_account_rent,
+                    spl_token::state::Account::LEN as u64,
+                    &spl_token::id(),
+                ),
                 instructions::init_wrap_unwrap(
                     &context.program_id,
                     &context.wallet_account.pubkey(),
@@ -2444,6 +2458,8 @@ pub async fn process_unwrapping(
                     &context.balance_account_guid_hash,
                     unwrap_amount,
                     WrapDirection::UNWRAP,
+                    Some(&temporary_unwrapping_account.pubkey()),
+                    token_account_rent,
                 ),
             ],
             Some(&context.pt_context.payer.pubkey()),
@@ -2451,6 +2467,7 @@ pub async fn process_unwrapping(
                 &context.pt_context.payer,
                 &unwrap_multisig_op_account,
                 &context.assistant_account,
+                &temporary_unwrapping_account,
             ],
             context.pt_context.last_blockhash,
         ))
@@ -2464,8 +2481,12 @@ pub async fn process_unwrapping(
         vec![&context.approvers[0], &context.approvers[1]],
         &context.pt_context.payer,
         context.pt_context.last_blockhash,
-        ApprovalDisposition::APPROVE,
-        OperationDisposition::APPROVED,
+        disposition,
+        if disposition == ApprovalDisposition::APPROVE {
+            OperationDisposition::APPROVED
+        } else {
+            OperationDisposition::DENIED
+        },
     )
     .await;
 
@@ -2482,7 +2503,8 @@ pub async fn process_unwrapping(
                 &context.balance_account_guid_hash,
                 unwrap_amount,
                 WrapDirection::UNWRAP,
-                None,
+                Some(&balance_account),
+                Some(&temporary_unwrapping_account.pubkey()),
             )],
             Some(&context.pt_context.payer.pubkey()),
             &[&context.pt_context.payer],

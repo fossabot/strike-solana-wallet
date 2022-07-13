@@ -416,10 +416,20 @@ pub fn init_wrap_unwrap(
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     direction: WrapDirection,
+    temporary_unwrapping_account: Option<&Pubkey>,
+    token_account_rent: u64,
 ) -> Instruction {
     let data = ProgramInstruction::InitWrapUnwrap {
-        fee_amount: FEE_AMOUNT,
-        fee_account_guid_hash: FEE_ACCOUNT_GUID_HASH_NONE,
+        fee_amount: if direction == WrapDirection::WRAP {
+            FEE_AMOUNT
+        } else {
+            token_account_rent
+        },
+        fee_account_guid_hash: if direction == WrapDirection::WRAP {
+            FEE_ACCOUNT_GUID_HASH_NONE
+        } else {
+            Some(account_guid_hash.clone())
+        },
         account_guid_hash: *account_guid_hash,
         amount,
         direction,
@@ -432,7 +442,7 @@ pub fn init_wrap_unwrap(
         &spl_token::native_mint::id(),
     );
 
-    let accounts = vec![
+    let mut accounts = vec![
         AccountMeta::new(*multisig_op_account, false),
         AccountMeta::new_readonly(*wallet_account, false),
         AccountMeta::new(*balance_account, false),
@@ -441,11 +451,19 @@ pub fn init_wrap_unwrap(
         AccountMeta::new_readonly(*initiator_account, true),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
         AccountMeta::new_readonly(*rent_return_account, true),
-        AccountMeta::new_readonly(system_program::id(), false),
-        AccountMeta::new_readonly(spl_token::id(), false),
-        AccountMeta::new_readonly(sysvar::rent::id(), false),
-        AccountMeta::new_readonly(spl_associated_token_account::id(), false),
     ];
+    if let Some(account) = temporary_unwrapping_account {
+        accounts.push(AccountMeta::new(*account, true))
+    }
+    accounts.append(
+        vec![
+            AccountMeta::new_readonly(system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+        ]
+        .as_mut(),
+    );
 
     Instruction {
         program_id: *program_id,
@@ -464,6 +482,7 @@ pub fn finalize_wrap_unwrap(
     amount: u64,
     direction: WrapDirection,
     fee_account_maybe: Option<&Pubkey>,
+    temporary_unwrapping_account: Option<&Pubkey>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeWrapUnwrap {
         account_guid_hash: *account_guid_hash,
@@ -487,11 +506,16 @@ pub fn finalize_wrap_unwrap(
         AccountMeta::new_readonly(sysvar::clock::id(), false),
         AccountMeta::new(wrapped_sol_account, false),
         AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(spl_token::native_mint::id(), false),
+        AccountMeta::new_readonly(spl_associated_token_account::id(), false),
     ];
+
+    if let Some(account) = temporary_unwrapping_account {
+        accounts.push(AccountMeta::new(*account, false))
+    }
 
     if let Some(fee_account) = fee_account_maybe {
         accounts.push(AccountMeta::new(*fee_account, false));
-        accounts.push(AccountMeta::new_readonly(system_program::id(), false));
     }
 
     Instruction {

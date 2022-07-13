@@ -19,7 +19,7 @@ endif
 
 
 build: format
-	cargo +bpf build-bpf
+	cargo build-bpf
 
 analyze:
 	soteria -c -analyzeAll .
@@ -34,7 +34,7 @@ format:
 	cargo fmt
 
 test: build_migration_test_version
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf ${tests} -- ${test-modifiers}
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf ${tests} -- ${test-modifiers}
 
 deploy_and_test: build deploy test
 
@@ -48,43 +48,43 @@ build_migration_test_version:
 	./revert_version_for_migration_test.sh
 
 test-balance-account-update:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=balance_account_update_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=balance_account_update_tests
 
 test-balance-account-creation:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=balance_account_creation_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=balance_account_creation_tests
 
 test-balance-account-transfer:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=balance_account_transfer_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=balance_account_transfer_tests
 
 test-balance-account-spl-transfer:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=balance_account_spl_transfer_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=balance_account_spl_transfer_tests
 
 test-balance-account-update-whitelist-status:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=balance_account_update_whitelist_status_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=balance_account_update_whitelist_status_tests
 
 test-wallet-update-signers:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=wallet_update_signers_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=wallet_update_signers_tests
 
 test-wallet-config-policy-update:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=wallet_config_policy_update_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=wallet_config_policy_update_tests
 
 test-dapp-transactions:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=dapp_transaction_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=dapp_transaction_tests
 
 test-dapp-book-update:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=dapp_book_update_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=dapp_book_update_tests
 
 test-address-book-update:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=address_book_update_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=address_book_update_tests
 
 test-init-wallet:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=init_wallet_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=init_wallet_tests
 
 test-migrate: build_migration_test_version
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=migrate_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=migrate_tests
 
 test-wallet-account-version:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=wallet_account_version_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=wallet_account_version_tests
 
 test-sign-data:
-	RUST_BACKTRACE=${rust-backtrace} cargo +bpf test-bpf --test=sign_data_tests
+	RUST_BACKTRACE=${rust-backtrace} cargo test-bpf --test=sign_data_tests
