@@ -1,10 +1,11 @@
-use solana_program::hash::Hash;
+use std::borrow::Borrow;
+use std::time::Duration;
 
+use solana_program::hash::Hash;
 use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::pubkey::Pubkey;
 use solana_program::{system_program, sysvar};
-use std::borrow::Borrow;
-use std::time::Duration;
+
 use strike_wallet::instruction::ProgramInstruction::{Cleanup, Migrate};
 use strike_wallet::instruction::{
     pack_supply_dapp_transaction_instructions, BalanceAccountAddressWhitelistUpdate,
@@ -414,9 +415,9 @@ pub fn init_wrap_unwrap(
     rent_return_account: &Pubkey,
     balance_account: &Pubkey,
     account_guid_hash: &BalanceAccountGuidHash,
+    wallet_guid_hash: &WalletGuidHash,
     amount: u64,
     direction: WrapDirection,
-    temporary_unwrapping_account: Option<&Pubkey>,
     token_account_rent: u64,
 ) -> Instruction {
     let data = ProgramInstruction::InitWrapUnwrap {
@@ -452,8 +453,18 @@ pub fn init_wrap_unwrap(
         AccountMeta::new_readonly(sysvar::clock::id(), false),
         AccountMeta::new_readonly(*rent_return_account, true),
     ];
-    if let Some(account) = temporary_unwrapping_account {
-        accounts.push(AccountMeta::new(*account, true))
+    if direction == WrapDirection::UNWRAP {
+        accounts.push(AccountMeta::new(
+            Pubkey::find_program_address(
+                &[
+                    &wallet_guid_hash.to_bytes(),
+                    &multisig_op_account.to_bytes(),
+                ],
+                program_id,
+            )
+            .0,
+            false,
+        ))
     }
     accounts.append(
         vec![
@@ -478,11 +489,11 @@ pub fn finalize_wrap_unwrap(
     wallet_account: &Pubkey,
     balance_account: &Pubkey,
     rent_return_account: &Pubkey,
+    wallet_guid_hash: &WalletGuidHash,
     account_guid_hash: &BalanceAccountGuidHash,
     amount: u64,
     direction: WrapDirection,
     fee_account_maybe: Option<&Pubkey>,
-    temporary_unwrapping_account: Option<&Pubkey>,
 ) -> Instruction {
     let data = ProgramInstruction::FinalizeWrapUnwrap {
         account_guid_hash: *account_guid_hash,
@@ -510,8 +521,18 @@ pub fn finalize_wrap_unwrap(
         AccountMeta::new_readonly(spl_associated_token_account::id(), false),
     ];
 
-    if let Some(account) = temporary_unwrapping_account {
-        accounts.push(AccountMeta::new(*account, false))
+    if direction == WrapDirection::UNWRAP {
+        accounts.push(AccountMeta::new(
+            Pubkey::find_program_address(
+                &[
+                    &wallet_guid_hash.to_bytes(),
+                    &multisig_op_account.to_bytes(),
+                ],
+                program_id,
+            )
+            .0,
+            false,
+        ))
     }
 
     if let Some(fee_account) = fee_account_maybe {

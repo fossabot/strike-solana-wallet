@@ -15,8 +15,11 @@ use solana_program::program::{invoke, invoke_signed};
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
 use solana_program::system_program;
+use solana_program::sysvar::Sysvar;
 use spl_associated_token_account::get_associated_token_address;
+use spl_associated_token_account::tools::account::create_pda_account;
 use spl_token::state::Account as SPLAccount;
 
 pub fn init(
@@ -75,8 +78,34 @@ pub fn init(
         )?;
     } else if direction == WrapDirection::UNWRAP {
         let temporary_unwrapping_account = next_account_info(accounts_iter)?;
+        let system_program_account_info = next_account_info(accounts_iter)?;
+        let (temporary_unwrapping_account_pda, unwrapping_bump_seed) = Pubkey::find_program_address(
+            &[
+                &wallet.wallet_guid_hash.to_bytes(),
+                &multisig_op_account_info.key.to_bytes(),
+            ],
+            program_id,
+        );
+        if temporary_unwrapping_account_pda != *temporary_unwrapping_account.key {
+            msg!("Wrong temporary unwrapping account");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let rent = Rent::get()?;
+        create_pda_account(
+            rent_return_account_info,
+            &rent,
+            spl_token::state::Account::LEN,
+            &spl_token::id(),
+            &system_program_account_info,
+            temporary_unwrapping_account,
+            &[
+                &wallet.wallet_guid_hash.to_bytes(),
+                &multisig_op_account_info.key.to_bytes(),
+                &[unwrapping_bump_seed],
+            ],
+        )?;
 
-        let bump_seed = validate_balance_account_and_get_seed(
+        let balance_account_bump_seed = validate_balance_account_and_get_seed(
             balance_account_info,
             &wallet.wallet_guid_hash,
             account_guid_hash,
@@ -86,7 +115,7 @@ pub fn init(
         invoke_signed(
             &spl_token::instruction::initialize_account2(
                 &spl_token::id(),
-                &temporary_unwrapping_account.key,
+                &temporary_unwrapping_account_pda,
                 native_mint_account_info.key,
                 balance_account_info.key,
             )?,
@@ -94,7 +123,7 @@ pub fn init(
             &[&[
                 wallet.wallet_guid_hash.to_bytes(),
                 account_guid_hash.to_bytes(),
-                &[bump_seed],
+                &[balance_account_bump_seed],
             ]],
         )?;
     }
@@ -141,8 +170,26 @@ pub fn finalize(
     }
     // spl_associated_token_program_info account
     let _ = next_account_info(accounts_iter)?;
+
     let temporary_unwrapping_account = if direction == WrapDirection::UNWRAP {
         Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+    let unwrapping_bump_seed = if direction == WrapDirection::UNWRAP {
+        let wallet = Wallet::unpack(&wallet_account_info.data.borrow())?;
+        let (key, seed) = Pubkey::find_program_address(
+            &[
+                wallet.wallet_guid_hash.to_bytes(),
+                &multisig_op_account_info.key.to_bytes(),
+            ],
+            program_id,
+        );
+        if *temporary_unwrapping_account.unwrap().key != key {
+            msg!("Wrong temporary unwrapping account");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Some(seed)
     } else {
         None
     };
@@ -247,37 +294,53 @@ pub fn finalize(
                         &[],
                     )?,
                     &[
-                        temporary_unwrapping_account.unwrap().clone(),
                         balance_account_info.clone(),
+                        temporary_unwrapping_account.unwrap().clone(),
                     ],
-                    &[&[
-                        wallet_guid_hash.to_bytes(),
-                        account_guid_hash.to_bytes(),
-                        &[bump_seed],
-                    ]],
+                    &[
+                        &[
+                            wallet_guid_hash.to_bytes(),
+                            account_guid_hash.to_bytes(),
+                            &[bump_seed],
+                        ],
+                        &[
+                            wallet_guid_hash.to_bytes(),
+                            &multisig_op_account_info.key.to_bytes(),
+                            &[unwrapping_bump_seed.unwrap()],
+                        ],
+                    ],
                 )?;
             }
             Ok(())
         },
         || -> ProgramResult {
-            invoke_signed(
-                &spl_token::instruction::close_account(
-                    &spl_token::id(),
-                    &temporary_unwrapping_account.unwrap().key,
-                    &balance_account_info.key,
-                    &balance_account_info.key,
-                    &[],
-                )?,
-                &[
-                    temporary_unwrapping_account.unwrap().clone(),
-                    balance_account_info.clone(),
-                ],
-                &[&[
-                    wallet_guid_hash.to_bytes(),
-                    account_guid_hash.to_bytes(),
-                    &[bump_seed],
-                ]],
-            )?;
+            if let Some(unwrapping_account) = temporary_unwrapping_account {
+                invoke_signed(
+                    &spl_token::instruction::close_account(
+                        &spl_token::id(),
+                        &unwrapping_account.key,
+                        &balance_account_info.key,
+                        &balance_account_info.key,
+                        &[],
+                    )?,
+                    &[
+                        balance_account_info.clone(),
+                        temporary_unwrapping_account.unwrap().clone(),
+                    ],
+                    &[
+                        &[
+                            wallet_guid_hash.to_bytes(),
+                            account_guid_hash.to_bytes(),
+                            &[bump_seed],
+                        ],
+                        &[
+                            wallet_guid_hash.to_bytes(),
+                            &multisig_op_account_info.key.to_bytes(),
+                            &[unwrapping_bump_seed.unwrap()],
+                        ],
+                    ],
+                )?;
+            }
             Ok(())
         },
     )
