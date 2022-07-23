@@ -6,24 +6,11 @@
 
 # Overview
 
-Strike is the power wallet that power users have wanted for a long time. This is 
-part of what we bring to the table:
-
-- Powerful features. Multi-signer, multi-user, mutli-wallet operations. Rich permissioning
-  schemes. Cryptographically enforced whitelists for transfer addresses and dApps.
-  Authentication of dApp destinations to avoid malicious phishing.
-
-- Safety & Security. Non-custodial and trustless wallets. State of the art key
-  management systems that feature biometric authentication and cryptographically
-  enforced approvals for every wallet action.
-
-- Limitless Scalability. Start securely with the simplest wallet configurations and add
-  users, wallets and policies over time, with complete control and with the click of a
-  button.
-
-- Great UX. Hassle-free activation, a mobile security app for key management, and a
-  beautiful and intuitive user experience mean that being a power user has never been
-  easier.
+The Strike Wallet is a Solana multi-approver program-based wallet suitable for
+use by institutions and anyone else looking for effortless institutional-grade
+access to the Solana ecosystem. It supports SOL and SPL tokens, staking and
+dApps. The multi-approver protocol applies to transfers and dApp transactions,
+policy changes, and recovery, with a different approver policy for each of these.
 
 # Building
 
