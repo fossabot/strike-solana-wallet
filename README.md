@@ -5,6 +5,8 @@
 </p>
 
 # Overview
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FStrikeProtocols%2Fstrike-solana-wallet.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FStrikeProtocols%2Fstrike-solana-wallet?ref=badge_shield)
+
 
 The Strike Wallet is a Solana multi-approver program-based wallet suitable for
 use by institutions and anyone else looking for effortless institutional-grade
@@ -52,3 +54,7 @@ $ make test
 ```bash
 $ make analyze
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FStrikeProtocols%2Fstrike-solana-wallet.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FStrikeProtocols%2Fstrike-solana-wallet?ref=badge_large)
